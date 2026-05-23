@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/TBD/codex-claude-bridge/schemas/config.json",
+  "title": "PluginConfig",
+  "description": "Schema for the codex-claude-bridge plugin's config.json. Defaults ship at <plugin-root>/config.json; per-machine overrides at ${CLAUDE_PLUGIN_DATA}/codex-bridge/config.json shallow-merge over the defaults.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "model",
+    "api_base",
+    "diff_files_threshold",
+    "diff_loc_threshold",
+    "max_retries",
+    "timeout_ms",
+    "log_level",
+    "context_token_budget"
+  ],
+  "properties": {
+    "model": {
+      "type": "string",
+      "description": "Codex model alias used for all commands.",
+      "default": "gpt-5.4-codex",
+      "minLength": 1
+    },
+    "api_base": {
+      "type": "string",
+      "description": "Base URL for the Codex Chat Completions endpoint.",
+      "format": "uri",
+      "default": "https://api.openai.com/v1"
+    },
+    "diff_files_threshold": {
+      "type": "integer",
+      "description": "Files-changed cutoff for sync-vs-background classification. Exceeding this triggers the background prompt unless explicit --background or --wait is set.",
+      "default": 8,
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "diff_loc_threshold": {
+      "type": "integer",
+      "description": "LOC-delta cutoff (insertions + deletions) for sync-vs-background classification.",
+      "default": 500,
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "max_retries": {
+      "type": "integer",
+      "description": "Max exponential-backoff retries for 429 / 5xx in transport.",
+      "default": 3,
+      "minimum": 0,
+      "maximum": 10
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "description": "Per-request timeout in milliseconds.",
+      "default": 300000,
+      "minimum": 1000,
+      "maximum": 1800000
+    },
+    "log_level": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error"],
+      "description": "Logger verbosity. 'debug' includes prompt bodies (locally only). Tokens are always redacted regardless of level.",
+      "default": "info"
+    },
+    "context_token_budget": {
+      "type": "integer",
+      "description": "Maximum tokens of diff + file context bundled into the user prompt by adversarialEngine.collectContext.",
+      "default": 60000,
+      "minimum": 1000,
+      "maximum": 1000000
+    },
+    "oauth_client_id": {
+      "type": "string",
+      "description": "OAuth client_id provisioned for the plugin. Filled in during Phase 0 source-inspection of the OpenAI reference plugin."
+    },
+    "oauth_authorize_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Override for the OAuth authorize endpoint."
+    },
+    "oauth_token_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Override for the OAuth token-exchange endpoint."
+    }
+  }
+}

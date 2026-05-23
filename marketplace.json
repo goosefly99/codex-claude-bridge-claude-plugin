@@ -1,0 +1,46 @@
+{
+  "$schema": "https://docs.claude.com/schemas/claude-code-marketplace.v1.json",
+  "name": "codex-claude-bridge",
+  "version": "0.1.0",
+  "title": "Codex × Claude Bridge",
+  "tagline": "Adversarial code review and execution rescue powered by OpenAI Codex, inside Claude Code.",
+  "description": "A Claude Code marketplace plugin that wraps OpenAI Codex as an adversarial reviewer and execution-rescue tool. Five slash commands mirror the OpenAI reference plugin to preserve muscle memory; the flagship /codex:adversarial-review hard-codes a 7-attack-surface taxonomy (Authentication, Data loss, Rollbacks, Race conditions, Degraded dependencies, Version skew, Observability gaps) and emits structured JSON that Claude plan mode can re-read for closed-loop fixes. Authentication is browser OAuth tied to your existing ChatGPT account — no API key required.",
+  "category": "code-quality",
+  "subcategories": ["code-review", "qa", "developer-tools"],
+  "tags": [
+    "codex",
+    "openai",
+    "adversarial-review",
+    "qa",
+    "code-review",
+    "static-analysis",
+    "dual-model",
+    "plan-mode"
+  ],
+  "author": {
+    "name": "TBD",
+    "email": "TBD",
+    "url": "https://github.com/TBD"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/TBD/codex-claude-bridge",
+  "repository": "https://github.com/TBD/codex-claude-bridge.git",
+  "issues": "https://github.com/TBD/codex-claude-bridge/issues",
+  "documentation": "https://github.com/TBD/codex-claude-bridge#readme",
+  "screenshots": [],
+  "platforms": ["linux", "darwin", "win32"],
+  "engines": {
+    "claude-code": ">=1.0.0",
+    "node": ">=20.0.0"
+  },
+  "minimum_claude_code_version": "1.0.0",
+  "install": {
+    "command": "/plugin marketplace add https://github.com/TBD/codex-claude-bridge",
+    "post_install": "/plugin install codex-claude-bridge",
+    "first_run": "/codex:setup"
+  },
+  "telemetry": {
+    "enabled": false,
+    "policy": "No telemetry, no analytics, no remote logging. All logs are local-only."
+  }
+}

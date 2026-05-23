@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build artifacts
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Test artifacts
+coverage/
+.nyc_output/
+*.lcov
+
+# Environment & secrets — NEVER commit
+.env
+.env.*
+!.env.example
+*.local
+*.local.*
+
+# OAuth token cache (NEVER commit; written by tokenStore at runtime)
+auth.json
+auth.json.enc
+tokens.enc
+*.token
+*.tokens
+
+# Plugin runtime data (per-machine)
+$CLAUDE_PLUGIN_DATA/
+.claude-plugin-data/
+
+# Logs
+logs/
+*.log
+*.jsonl
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS
+desktop.ini
+
+# TypeScript / Node
+.tsbuildinfo
+.npm/
+.eslintcache
+
+# Vitest
+.vitest/
+
+# Job registry (per-machine, per-workspace)
+jobs/
+
+# Local-only overrides per CLAUDE.md hygiene rules
+config.local.json
+settings.local.json
+.claude/settings.local.json
+
+# Local dev artifacts — never tracked
+ROADMAP.md

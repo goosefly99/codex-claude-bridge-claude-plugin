@@ -1,0 +1,65 @@
+{
+  "name": "codex-claude-bridge",
+  "version": "0.1.0",
+  "description": "Wraps OpenAI Codex inside Claude Code as an adversarial reviewer and execution rescue tool. Five slash commands with a hard-coded 7-attack-surface taxonomy and structured-JSON output.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint scripts tests --ext .ts --max-warnings 0",
+    "format": "prettier --write \"scripts/**/*.ts\" \"tests/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:anti-drift": "vitest run tests/anti-drift.test.ts",
+    "verify": "npm run typecheck && npm run lint && npm test",
+    "clean": "rimraf dist coverage .tsbuildinfo"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "codex",
+    "openai",
+    "code-review",
+    "adversarial-review",
+    "qa"
+  ],
+  "author": "TBD",
+  "license": "MIT",
+  "homepage": "https://github.com/TBD/codex-claude-bridge",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TBD/codex-claude-bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TBD/codex-claude-bridge/issues"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "commander": "^12.1.0",
+    "keytar": "^7.9.0",
+    "sodium-native": "^4.3.0",
+    "undici": "^6.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "eslint": "^9.18.0",
+    "prettier": "^3.4.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "comments": {
+    "deps": "HTTP via undici (smaller, faster than axios for this workload). CLI parsing via commander (clearer ergonomics than yargs for a small surface). Token encryption: keytar primary (uses the OS keychain — Keychain on macOS, Credential Manager on Windows, Secret Service on Linux); sodium-native fallback when keychain unavailable. JSON Schema validation via Ajv + ajv-formats."
+  }
+}

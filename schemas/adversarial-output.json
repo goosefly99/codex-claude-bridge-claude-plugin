@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/TBD/codex-claude-bridge/schemas/adversarial-output.json",
+  "title": "AdversarialOutput",
+  "description": "Structured output of /codex:adversarial-review. Validated by adversarialEngine.dispatchAndValidate before being surfaced to the user or emitted as a tool-result.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "severity_buckets", "next_steps", "safe_to_ship"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "needs-changes", "blocker"],
+      "description": "Overall ship/no-ship verdict. 'blocker' means at least one critical or high finding must be fixed first."
+    },
+    "severity_buckets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["critical", "high", "medium", "low"],
+      "properties": {
+        "critical": {
+          "type": "array",
+          "description": "Issues that would cause data loss, security breach, or production outage.",
+          "items": { "$ref": "#/$defs/Issue" }
+        },
+        "high": {
+          "type": "array",
+          "description": "Issues that would cause a degraded user experience or rollback.",
+          "items": { "$ref": "#/$defs/Issue" }
+        },
+        "medium": {
+          "type": "array",
+          "description": "Correctness gaps that don't yet manifest in production.",
+          "items": { "$ref": "#/$defs/Issue" }
+        },
+        "low": {
+          "type": "array",
+          "description": "Style or minor robustness issues.",
+          "items": { "$ref": "#/$defs/Issue" }
+        }
+      }
+    },
+    "next_steps": {
+      "type": "array",
+      "description": "Short ordered list of actions the author should take to address the findings.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 280
+      },
+      "maxItems": 12
+    },
+    "safe_to_ship": {
+      "type": "array",
+      "description": "Paths of files within the diff that are safe to ship as-is, even if other parts of the diff are not.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "Issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "surface", "description", "fix_hint"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Forward-slash-form path within the repo. Normalized via util/paths.toUnixPath.",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "description": "1-indexed line number in the post-diff file.",
+          "minimum": 1
+        },
+        "surface": {
+          "type": "string",
+          "enum": [
+            "Authentication",
+            "Data loss",
+            "Rollbacks",
+            "Race conditions",
+            "Degraded dependencies",
+            "Version skew",
+            "Observability gaps"
+          ],
+          "description": "The hard-coded attack surface this issue falls under. MUST match prompts/adversarial-system.md verbatim."
+        },
+        "description": {
+          "type": "string",
+          "description": "Single-sentence description of the issue.",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "fix_hint": {
+          "type": "string",
+          "description": "Single-sentence concrete fix recommendation.",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "./schemas/config.json",
+  "model": "gpt-5.4-codex",
+  "api_base": "https://api.openai.com/v1",
+  "diff_files_threshold": 8,
+  "diff_loc_threshold": 500,
+  "max_retries": 3,
+  "timeout_ms": 300000,
+  "log_level": "info",
+  "context_token_budget": 60000
+}
