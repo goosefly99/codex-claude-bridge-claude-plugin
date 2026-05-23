@@ -15,8 +15,19 @@
  * @module scripts/util/log
  */
 
+import { appendFileSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 /** Log level enum, ordered by severity. */
 export type LogLevel = "debug" | "info" | "warn" | "error";
+
+const LEVEL_RANK: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
 
 /** Redacted, structured context attached to a log entry. */
 export type LogContext = Record<string, unknown>;
@@ -31,53 +42,115 @@ export interface Logger {
 }
 
 /**
- * Patterns that always trigger redaction. Matched against context keys
- * (case-insensitive). Values for matching keys are replaced with `[redacted]`.
+ * Patterns that always trigger redaction.
  */
 export const REDACT_KEY_PATTERN =
   /token|secret|bearer|api[_-]?key|authorization|password|credential/i;
 
-/**
- * The Authorization header value (and other bearer-like strings) is replaced
- * with this constant before serialization.
- */
+/** Bearer-like value: long alphanumerics with dot-separated JWT-ish shape. */
+const BEARER_VALUE_PATTERN = /^(Bearer\s+)?[A-Za-z0-9_\-]{20,}(\.[A-Za-z0-9_\-]+){0,2}$/;
+
 export const REDACTED_VALUE = "[redacted]" as const;
 
+let currentLevel: LogLevel = "info";
+
+/** Override the log level (used by config loader after startup). */
+export function setLevel(level: LogLevel): void {
+  currentLevel = level;
+}
+
+function logsDir(): string {
+  const data = process.env["CLAUDE_PLUGIN_DATA"] ?? join(homedir(), ".claude", "plugin-data");
+  return join(data, "codex-bridge", "logs");
+}
+
+function dayStamp(): string {
+  const d = new Date();
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function redactPathLike(s: string): string {
+  const home = homedir();
+  if (!home) return s;
+  if (s.includes(home)) return s.split(home).join("~");
+  return s;
+}
+
 /**
- * Write a single log entry. Routes through the redactor before writing.
- *
- * Behavior:
- *   - Serializes `{ ts, level, msg, ...redactedCtx }` as a single JSON line.
- *   - Appends to the current day's log file.
- *   - On filesystem failures, falls back to stderr (also redacted).
- *
- * @param level Severity.
- * @param msg Human-readable message.
- * @param ctx Optional structured context. Keys matching REDACT_KEY_PATTERN
- *   have their values redacted.
+ * Redact a context object recursively. Returns a NEW object; does not mutate.
  */
-export function log(_level: LogLevel, _msg: string, _ctx?: LogContext): void {
-  throw new Error("not implemented");
+export function redact(ctx: LogContext): LogContext {
+  return redactInternal(ctx, new WeakSet()) as LogContext;
+}
+
+function redactInternal(value: unknown, seen: WeakSet<object>): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") {
+    if (BEARER_VALUE_PATTERN.test(value.trim())) return REDACTED_VALUE;
+    return redactPathLike(value);
+  }
+  if (typeof value !== "object") return value;
+  if (seen.has(value as object)) return "[circular]";
+  seen.add(value as object);
+
+  if (Array.isArray(value)) {
+    return value.map((v) => redactInternal(v, seen));
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (REDACT_KEY_PATTERN.test(k)) {
+      out[k] = REDACTED_VALUE;
+    } else {
+      out[k] = redactInternal(v, seen);
+    }
+  }
+  return out;
+}
+
+/**
+ * Write a single log entry.
+ */
+export function log(level: LogLevel, msg: string, ctx?: LogContext): void {
+  if (LEVEL_RANK[level] < LEVEL_RANK[currentLevel]) return;
+
+  const entry: Record<string, unknown> = {
+    ts: new Date().toISOString(),
+    level,
+    msg: redactPathLike(msg),
+  };
+  if (ctx) {
+    const r = redact(ctx);
+    for (const [k, v] of Object.entries(r)) entry[k] = v;
+  }
+
+  const line = JSON.stringify(entry) + "\n";
+
+  try {
+    const dir = logsDir();
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `${dayStamp()}.log`);
+    appendFileSync(file, line, { mode: 0o600 });
+  } catch {
+    process.stderr.write(line);
+  }
 }
 
 /**
  * Construct a child logger that prefixes every entry with a stable component
- * tag (e.g. "auth", "transport", "jobManager"). Useful for grepping.
- *
- * @param component Component tag, conventionally lowercase short.
- * @returns A Logger that writes to the same backing store.
+ * tag.
  */
-export function getLogger(_component: string): Logger {
-  throw new Error("not implemented");
-}
-
-/**
- * Redact a context object in-place. Exposed for unit tests; production code
- * should use log() directly.
- *
- * @param ctx The context object to redact.
- * @returns A new redacted context (does not mutate input).
- */
-export function redact(_ctx: LogContext): LogContext {
-  throw new Error("not implemented");
+export function getLogger(component: string): Logger {
+  const wrap = (level: LogLevel) => (msg: string, ctx?: LogContext) =>
+    log(level, msg, { component, ...(ctx ?? {}) });
+  return {
+    log: (level, msg, ctx) => log(level, msg, { component, ...(ctx ?? {}) }),
+    debug: wrap("debug"),
+    info: wrap("info"),
+    warn: wrap("warn"),
+    error: wrap("error"),
+  };
 }

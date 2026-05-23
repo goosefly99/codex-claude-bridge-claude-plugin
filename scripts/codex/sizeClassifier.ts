@@ -9,69 +9,94 @@
  *   - 8 changed files
  *   - 500 added+deleted LOC delta
  *
- * Either threshold being exceeded triggers "background" classification.
- * Explicit --background / --wait flags should be honored by callers BEFORE
- * calling this classifier (i.e. classification is only consulted when no flag
- * was provided).
- *
  * @module scripts/codex/sizeClassifier
  */
 
-/** The classification verdict. */
+import { spawnSync } from "node:child_process";
+
+import { getConfig, DEFAULT_CONFIG } from "../util/config.js";
+import { getLogger } from "../util/log.js";
+
+const log = getLogger("sizeClassifier");
+
 export type DiffClass = "sync" | "background";
 
-/** Size statistics computed from `git diff --stat`. */
 export interface DiffStats {
-  /** Number of files with at least one change. */
   files_changed: number;
-  /** Total lines added across all changed files. */
   insertions: number;
-  /** Total lines deleted across all changed files. */
   deletions: number;
 }
 
-/** Threshold configuration loaded from config.json with defaults. */
 export interface ClassifierThresholds {
-  diff_files_threshold: number; // default 8
-  diff_loc_threshold: number; // default 500
+  diff_files_threshold: number;
+  diff_loc_threshold: number;
+}
+
+function runGitDiffStat(target?: string): string {
+  const args = ["diff", "--numstat"];
+  if (target) args.push(target);
+  const res = spawnSync("git", args, { encoding: "utf-8" });
+  if (res.status !== 0) {
+    const err = new Error(
+      `git diff --numstat failed: ${res.stderr?.trim() ?? "(no stderr)"}`,
+    );
+    (err as Error & { cause?: unknown }).cause = { kind: "git_state" };
+    throw err;
+  }
+  return res.stdout ?? "";
+}
+
+function parseNumstat(stdout: string): DiffStats {
+  let files = 0;
+  let ins = 0;
+  let dels = 0;
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const parts = line.split("\t");
+    if (parts.length < 3) continue;
+    const a = parts[0];
+    const d = parts[1];
+    files += 1;
+    if (a && a !== "-") ins += Number(a);
+    if (d && d !== "-") dels += Number(d);
+  }
+  return { files_changed: files, insertions: ins, deletions: dels };
+}
+
+export async function getDiffStats(target?: string): Promise<DiffStats> {
+  const stdout = runGitDiffStat(target);
+  const stats = parseNumstat(stdout);
+  log.debug("git diff stats", stats as unknown as Record<string, unknown>);
+  return stats;
+}
+
+export async function classifyDiff(target?: string): Promise<DiffClass> {
+  const stats = await getDiffStats(target);
+  const t = await loadThresholdsAsync();
+  if (
+    stats.files_changed > t.diff_files_threshold ||
+    stats.insertions + stats.deletions > t.diff_loc_threshold
+  ) {
+    return "background";
+  }
+  return "sync";
+}
+
+async function loadThresholdsAsync(): Promise<ClassifierThresholds> {
+  const cfg = await getConfig();
+  return {
+    diff_files_threshold: cfg.diff_files_threshold,
+    diff_loc_threshold: cfg.diff_loc_threshold,
+  };
 }
 
 /**
- * Classify the size of the given diff target.
- *
- * Behavior:
- *   1. Run `git diff --stat` (or branch-comparison equivalent) for the target.
- *   2. Parse files-changed and total +/- LOC.
- *   3. Apply the threshold rule:
- *        files > diff_files_threshold OR
- *        insertions + deletions > diff_loc_threshold
- *      => "background"; else "sync".
- *
- * @param target Optional git ref/refspec. Default: uncommitted working-tree.
- * @returns The DiffClass verdict.
- * @throws ErrorKind.git_state if `git diff` fails or the workspace has no repo.
- */
-export async function classifyDiff(_target?: string): Promise<DiffClass> {
-  throw new Error("not implemented");
-}
-
-/**
- * Compute raw diff statistics. Exposed for testability and so /codex:status
- * can report file counts alongside its job-state output.
- *
- * @param target Optional git ref/refspec.
- * @returns Parsed DiffStats.
- */
-export async function getDiffStats(_target?: string): Promise<DiffStats> {
-  throw new Error("not implemented");
-}
-
-/**
- * Load thresholds from config.json with defaults applied. Pure function over
- * config; does not consult the filesystem.
- *
- * @returns ClassifierThresholds.
+ * Load thresholds synchronously from defaults. Exposed for unit tests that
+ * don't want to await config loading.
  */
 export function loadThresholds(): ClassifierThresholds {
-  throw new Error("not implemented");
+  return {
+    diff_files_threshold: DEFAULT_CONFIG.diff_files_threshold,
+    diff_loc_threshold: DEFAULT_CONFIG.diff_loc_threshold,
+  };
 }

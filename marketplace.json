@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "title": "Codex × Claude Bridge",
   "tagline": "Adversarial code review and execution rescue powered by OpenAI Codex, inside Claude Code.",
-  "description": "A Claude Code marketplace plugin that wraps OpenAI Codex as an adversarial reviewer and execution-rescue tool. Five slash commands mirror the OpenAI reference plugin to preserve muscle memory; the flagship /codex:adversarial-review hard-codes a 7-attack-surface taxonomy (Authentication, Data loss, Rollbacks, Race conditions, Degraded dependencies, Version skew, Observability gaps) and emits structured JSON that Claude plan mode can re-read for closed-loop fixes. Authentication is browser OAuth tied to your existing ChatGPT account — no API key required.",
+  "description": "A Claude Code marketplace plugin that wraps OpenAI Codex as an adversarial reviewer, execution-rescue tool, parallel delegation surface, and Codex-methods skill suite. Five slash commands mirror the OpenAI reference plugin to preserve muscle memory; the flagship /codex:adversarial-review hard-codes a 7-attack-surface taxonomy (Authentication, Data loss, Rollbacks, Race conditions, Degraded dependencies, Version skew, Observability gaps) and emits structured JSON that Claude plan mode can re-read for closed-loop fixes. Five agentic skills: implement-with-codex (P1/P3/P4/P5/P7 parallel delegation), adversarial-plan-review (Kashef plan-stage review with a locked 6-category taxonomy and a revision loop), browser-verify (UI verification via Playwright MCP / @browseruse / Codex Chrome plugin), failure-as-knowledge (deduped error log written to AGENTS.md), and agents-md-sync (lean AGENTS.md ↔ CLAUDE.md sync). Authentication is browser OAuth tied to your existing ChatGPT account — no API key required.",
   "category": "code-quality",
   "subcategories": ["code-review", "qa", "developer-tools"],
   "tags": [
@@ -15,7 +15,15 @@
     "code-review",
     "static-analysis",
     "dual-model",
-    "plan-mode"
+    "plan-mode",
+    "delegation",
+    "agentic-skill",
+    "parallel-agents",
+    "plan-review",
+    "browser-verify",
+    "playwright-mcp",
+    "agents-md",
+    "knowledge-capture"
   ],
   "author": {
     "name": "TBD",

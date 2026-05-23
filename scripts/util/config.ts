@@ -11,51 +11,39 @@
  * @module scripts/util/config
  */
 
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
+
+import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
+
+import { setLevel, getLogger } from "./log.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const PLUGIN_ROOT = resolve(dirname(__filename), "..", "..");
+
+const log = getLogger("config");
+
 /** The full plugin configuration shape. Mirrors schemas/config.json. */
 export interface PluginConfig {
-  /** Codex model alias to use. Default: "gpt-5.4-codex". */
   model: string;
-  /** Codex API base URL. Default: "https://api.openai.com/v1". */
   api_base: string;
-  /** Files-changed threshold for sync-vs-bg classification. Default: 8. */
   diff_files_threshold: number;
-  /** Total LOC delta threshold. Default: 500. */
   diff_loc_threshold: number;
-  /** Max retries on 429/5xx in transport. Default: 3. */
   max_retries: number;
-  /** Per-request timeout in milliseconds. Default: 300000 (5 minutes). */
   timeout_ms: number;
-  /** Logger verbosity. Default: "info". "debug" includes prompt bodies. */
   log_level: "debug" | "info" | "warn" | "error";
-  /** Token budget for context collection in adversarialEngine. Default: 60000. */
   context_token_budget: number;
-  /** OAuth client_id (set during Phase 0 source-inspection). */
+  delegator_max_concurrent: number;
+  delegator_isolate_worktrees: boolean;
   oauth_client_id?: string;
-  /** OAuth authorize URL override. */
   oauth_authorize_url?: string;
-  /** OAuth token-exchange URL override. */
   oauth_token_url?: string;
 }
 
-/**
- * Load and validate the merged config. Cached after the first call; pass
- * `{ refresh: true }` to bypass the cache in tests.
- *
- * @param opts Loader options.
- * @returns The resolved PluginConfig.
- * @throws ErrorKind.path_resolution if config files are unreadable.
- * @throws Error if validation against schemas/config.json fails.
- */
-export async function getConfig(_opts?: {
-  refresh?: boolean;
-}): Promise<PluginConfig> {
-  throw new Error("not implemented");
-}
-
-/**
- * Default config values, used when no on-disk config is present. Exported for
- * testing and so init scripts can write the file.
- */
+/** Default config values, used when no on-disk config is present. */
 export const DEFAULT_CONFIG: PluginConfig = {
   model: "gpt-5.4-codex",
   api_base: "https://api.openai.com/v1",
@@ -65,4 +53,60 @@ export const DEFAULT_CONFIG: PluginConfig = {
   timeout_ms: 300_000,
   log_level: "info",
   context_token_budget: 60_000,
+  delegator_max_concurrent: 4,
+  delegator_isolate_worktrees: false,
 };
+
+let cached: PluginConfig | null = null;
+
+function overridePath(): string {
+  const data = process.env["CLAUDE_PLUGIN_DATA"] ?? join(homedir(), ".claude", "plugin-data");
+  return join(data, "codex-bridge", "config.json");
+}
+
+function readJsonIfPresent(path: string): Record<string, unknown> | null {
+  if (!existsSync(path)) return null;
+  try {
+    const raw = readFileSync(path, "utf-8");
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch (err) {
+    log.warn("config file is unreadable, ignoring", { path, err: String(err) });
+    return null;
+  }
+}
+
+function validate(cfg: unknown): cfg is PluginConfig {
+  const schemaPath = join(PLUGIN_ROOT, "schemas", "config.json");
+  const schemaRaw = readFileSync(schemaPath, "utf-8");
+  const schema = JSON.parse(schemaRaw) as object;
+  const ajv = new (Ajv2020 as unknown as new (opts: object) => {
+    compile(s: object): (data: unknown) => boolean;
+  })({ allErrors: true, strict: false });
+  (addFormats as unknown as (a: unknown) => void)(ajv);
+  const validateFn = ajv.compile(schema);
+  return validateFn(cfg);
+}
+
+/**
+ * Load and validate the merged config. Cached after the first call.
+ */
+export async function getConfig(opts?: { refresh?: boolean }): Promise<PluginConfig> {
+  if (cached && !opts?.refresh) return cached;
+
+  const defaultsPath = join(PLUGIN_ROOT, "config.json");
+  const defaultsRaw = readJsonIfPresent(defaultsPath) ?? {};
+  const overrideRaw = readJsonIfPresent(overridePath()) ?? {};
+
+  const merged = { ...DEFAULT_CONFIG, ...defaultsRaw, ...overrideRaw } as Record<string, unknown>;
+  // Drop $schema if present so validation doesn't choke.
+  delete merged["$schema"];
+
+  if (!validate(merged)) {
+    throw new Error("config validation failed (see schemas/config.json)");
+  }
+
+  cached = merged as unknown as PluginConfig;
+  setLevel(cached.log_level);
+  log.debug("config loaded", { keys: Object.keys(cached) });
+  return cached;
+}

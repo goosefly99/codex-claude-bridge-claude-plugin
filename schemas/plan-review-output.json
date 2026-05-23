@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/TBD/codex-claude-bridge/schemas/plan-review-output.json",
+  "title": "PlanReviewOutput",
+  "description": "Structured output of the adversarial-plan-review skill. Validated by planReviewer.runPlanReview before being surfaced to the user. The six-category gap taxonomy is the differentiator and is hard-coded in prompts/plan-review-system.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "severity_score", "gaps", "out_of_scope_validated", "next_revision_hints"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["acceptable", "needs-revision", "unfit"],
+      "description": "Overall plan verdict. 'acceptable' = severity < 25, 'needs-revision' = 25 <= severity < 70, 'unfit' = severity >= 70."
+    },
+    "severity_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Integer risk score in [0, 100]. Higher = more dangerous to execute the plan as written."
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Per-gap findings, one entry per identified gap. Empty array allowed when the plan is acceptable.",
+      "items": { "$ref": "#/$defs/Gap" }
+    },
+    "out_of_scope_validated": {
+      "type": "array",
+      "description": "Concerns the plan explicitly and correctly declared out-of-scope. Rewards plans that are tight about their boundaries.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    },
+    "next_revision_hints": {
+      "type": "array",
+      "description": "Short, ordered list of actionable strings the author should incorporate into the next revision of the plan.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      },
+      "maxItems": 12
+    }
+  },
+  "$defs": {
+    "Gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "description", "impact", "mitigation"],
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": [
+            "missing-requirement",
+            "hidden-assumption",
+            "scope-creep",
+            "security-blind-spot",
+            "integration-gap",
+            "observability-gap"
+          ],
+          "description": "The hard-coded gap category. MUST match prompts/plan-review-system.md verbatim."
+        },
+        "description": {
+          "type": "string",
+          "description": "Single-sentence description of the gap.",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "impact": {
+          "type": "string",
+          "description": "Single-sentence statement of what goes wrong if this gap ships.",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "mitigation": {
+          "type": "string",
+          "description": "Single-sentence concrete mitigation the author should add to the plan.",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
+    }
+  }
+}

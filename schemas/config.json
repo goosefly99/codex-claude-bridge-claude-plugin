@@ -13,7 +13,9 @@
     "max_retries",
     "timeout_ms",
     "log_level",
-    "context_token_budget"
+    "context_token_budget",
+    "delegator_max_concurrent",
+    "delegator_isolate_worktrees"
   ],
   "properties": {
     "model": {
@@ -82,6 +84,18 @@
       "type": "string",
       "format": "uri",
       "description": "Override for the OAuth token-exchange endpoint."
+    },
+    "delegator_max_concurrent": {
+      "type": "integer",
+      "description": "Maximum Codex sub-jobs the implement-with-codex skill can run in parallel via scripts/codex/delegator.ts. Separate from the slash-command FIFO.",
+      "default": 4,
+      "minimum": 1,
+      "maximum": 32
+    },
+    "delegator_isolate_worktrees": {
+      "type": "boolean",
+      "description": "If true, parallel delegations (A/B, Ralph) each run in a throwaway git worktree managed by scripts/git/worktree.ts. Off by default — the main working tree is used.",
+      "default": false
     }
   }
 }

@@ -21,53 +21,87 @@
  * @module scripts/util/paths
  */
 
+import { isAbsolute, resolve, relative, sep } from "node:path";
+
+const IS_WINDOWS = process.platform === "win32";
+const NULL_BYTE = String.fromCharCode(0);
+
+function rejectNullBytes(input: string): void {
+  if (input.indexOf(NULL_BYTE) !== -1) {
+    const err = new Error("path contains null byte");
+    (err as Error & { cause?: unknown }).cause = { kind: "path_resolution" };
+    throw err;
+  }
+}
+
+function lowerCaseDriveLetter(p: string): string {
+  if (!IS_WINDOWS) return p;
+  if (p.length >= 2 && p[1] === ":" && /[A-Z]/.test(p[0] ?? "")) {
+    return (p[0]?.toLowerCase() ?? "") + p.slice(1);
+  }
+  return p;
+}
+
+function isUncPath(p: string): boolean {
+  return p.startsWith("\\\\") || p.startsWith("//");
+}
+
 /**
  * Normalize a filesystem path for *logical* comparison and persistence.
  *
- * Behavior:
- *   - Collapses `..` and `.` segments.
- *   - Resolves to an absolute path against the current working directory.
- *   - Lower-cases the drive letter on Windows for consistency.
- *   - On Windows, retains backslash-form for paths that will be passed to
- *     OS APIs.
- *   - Throws `path_resolution` if the input contains null bytes or other
- *     parse-hostile characters.
- *
- * @param input The raw path (possibly relative, possibly with mixed separators).
+ * @param input The raw path.
  * @returns A normalized absolute path in the platform-native form.
  * @throws ErrorKind.path_resolution on malformed input.
  */
-export function normalize(_input: string): string {
-  throw new Error("not implemented");
+export function normalize(input: string): string {
+  if (typeof input !== "string" || input.length === 0) {
+    const err = new Error("path must be a non-empty string");
+    (err as Error & { cause?: unknown }).cause = { kind: "path_resolution" };
+    throw err;
+  }
+  rejectNullBytes(input);
+
+  if (isUncPath(input)) {
+    return IS_WINDOWS ? input.replace(/\//g, "\\") : input;
+  }
+
+  const resolved = isAbsolute(input) ? resolve(input) : resolve(process.cwd(), input);
+  return lowerCaseDriveLetter(resolved);
 }
 
 /**
  * Convert a path to forward-slash form for embedding in JSON, URLs, or
  * cross-platform diff output.
  *
- * Behavior:
- *   - Calls normalize() first.
- *   - Replaces `\` with `/`.
- *   - Preserves UNC prefix (`//server/share`).
- *   - Preserves drive-letter prefix (`C:/Users/...`).
- *
  * @param input The raw path.
  * @returns A forward-slash-form absolute path.
  * @throws ErrorKind.path_resolution on malformed input.
  */
-export function toUnixPath(_input: string): string {
-  throw new Error("not implemented");
+export function toUnixPath(input: string): string {
+  rejectNullBytes(input);
+
+  if (isUncPath(input)) {
+    return input.replace(/\\/g, "/");
+  }
+
+  const norm = normalize(input);
+  return norm.replace(/\\/g, "/");
 }
 
 /**
- * Check if `child` is contained within `parent`, handling case differences
- * (Windows) and OneDrive redirection. Used by the rescue command to enforce
- * "no writes outside the workspace root".
+ * Check if `child` is contained within `parent`.
  *
  * @param parent The candidate parent directory.
  * @param child The candidate child path.
  * @returns true iff child is logically inside parent.
  */
-export function isWithin(_parent: string, _child: string): boolean {
-  throw new Error("not implemented");
+export function isWithin(parent: string, child: string): boolean {
+  const p = normalize(parent);
+  const c = normalize(child);
+  const rel = relative(p, c);
+  if (rel === "") return true;
+  if (rel.startsWith("..")) return false;
+  if (isAbsolute(rel)) return false;
+  const head = rel.split(sep)[0] ?? "";
+  return head !== ".." && !head.startsWith("..");
 }

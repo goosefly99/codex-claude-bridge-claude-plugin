@@ -75,6 +75,71 @@ Show the current background job, elapsed time, and any queued requests.
 /codex:status
 ```
 
+## Skills
+
+Beyond the five slash commands, `codex-claude-bridge` ships five agentic skills that Claude invokes automatically when your request matches their triggers. You never type their names — describe what you want and Claude routes to the right one.
+
+| Skill | Triggers on phrases like | What it does |
+| --- | --- | --- |
+| `implement-with-codex` | "use codex to implement", "delegate this to codex", "A/B with codex", "ralph loop with codex" | Hands implementation to 1+ Codex agents in parallel (patterns P1/P3/P4/P5/P7). See section below. |
+| `adversarial-plan-review` | "review my plan", "pressure-test this plan before I code", "find the gaps in my plan", "kashef loop on this plan" | Runs Codex against a *written plan* (not code) across 6 categories. Loops ≤3× or until severity decreases. Catches scope mistakes no later test can recover. |
+| `browser-verify` | "verify the UI", "click through this", "did my UI changes work", "smoke-test the dashboard" | Drives the browser to confirm UI actually works. Uses Playwright MCP, `@browseruse`, or the Codex Chrome plugin (whichever you have installed). |
+| `failure-as-knowledge` | "log this error", "remember this for next time", "add this to AGENTS.md so we don't repeat it" | Appends a deduped, sanitized entry to `AGENTS.md` (and mirrors to `CLAUDE.md` if present). Converts debugging time into permanent project knowledge. |
+| `agents-md-sync` | "bootstrap AGENTS.md", "sync AGENTS.md with CLAUDE.md", "lean agents.md for this project" | Bootstraps or syncs `AGENTS.md` ↔ `CLAUDE.md` with a lean 5-section schema. Always preserves `failure-as-knowledge`-managed sections. |
+
+### `implement-with-codex`
+
+Hand implementation work to one or more Codex agents in parallel. This is the higher-level orchestration surface; it bypasses `/codex:rescue` and routes through a dedicated `delegator` so it can run multiple Codex sub-jobs simultaneously without conflicting with the depth-1 FIFO that protects the slash commands.
+
+You don't invoke the skill by name. Claude picks it up when you say things like:
+
+| You say | Skill picks the pattern |
+| --- | --- |
+| "Use Codex to implement this" | P1 — plan with Claude, execute with Codex |
+| "Have Codex implement this, then adversarial-review it" | P3 — plan → audit → implement closed loop |
+| "Run both Claude and Codex on this in parallel" | P4 — A/B implementation split |
+| "Split this: Codex does the data layer, Claude does the UI" | P5 — workload-fraction split |
+| "Ralph loop this with Codex as the reviewer" | P7 — generator + evaluator |
+
+Default parallelism cap is 4 (tune via `delegator_max_concurrent` in `config.json`). For A/B and Ralph runs that mutate code, set `delegator_isolate_worktrees: true` to give each agent its own throwaway worktree — the main working tree stays untouched until you merge.
+
+The skill never auto-commits. It produces a clean diff in your working tree, prints a summary, and leaves the decision to ship to you.
+
+### `adversarial-plan-review`
+
+Run Codex against a written plan **before** any code exists. The skill walks Codex through six categories in order — missing-requirement, hidden-assumption, scope-creep, security-blind-spot, integration-gap, observability-gap — and returns a structured verdict (`acceptable` / `needs-revision` / `unfit`) with severity, gaps, mitigations, and revision hints.
+
+If the verdict isn't `acceptable`, the skill produces a revised plan and re-reviews, up to 3 iterations or until severity stops decreasing. Distinct from `/codex:adversarial-review`, which runs on code; this runs on the plan.
+
+```text
+You: "review my plan: <pastes plan>"
+Claude (via skill): runs Codex review → presents 4 gaps → produces revised plan → re-reviews → verdict acceptable → done.
+```
+
+Source: Mark Kashef's Bitly demo (`concepts/codex_methods/`). Catches scope mistakes that no test suite added later can recover.
+
+### `browser-verify`
+
+After any UI change, ask Claude to verify it visually. The skill probes for one of three backends — Playwright MCP (preferred), the Codex Chrome plugin, or the `@browseruse` mention macro — and drives the browser through one of five named recipes (`smoke-routes`, `primary-cta-clickthrough`, `form-roundtrip`, `dark-mode-toggle`, `network-failure-degradation`).
+
+This skill never writes code. It only verifies and reports `[BLOCKER]` / `[WARN]` / `[OK]` findings. If no backend is installed, it prints Playwright MCP install instructions and stops.
+
+### `failure-as-knowledge`
+
+When you hit an error you don't want to hit again, tell Claude. The skill writes a structured entry to `AGENTS.md` (and `CLAUDE.md` if it exists) under a managed `## Known failure modes` section, deduped by symptom hash so the same error never gets logged twice. Token-like substrings are auto-sanitized before write.
+
+```text
+You: "log this error so we don't hit it again. Symptom: dev server fails on port 3000.
+     Root cause: another process holds the port. Prevention: free the port first."
+Claude (via skill): appends entry → "Wrote to AGENTS.md and CLAUDE.md."
+```
+
+### `agents-md-sync`
+
+Bootstraps a lean `AGENTS.md` (auto-loaded by Codex at session start) or syncs an existing one with `CLAUDE.md`. The lean schema has five sections: User identity, Project goal, Style preferences, Standing rules, Known failure modes. Anything reproducible from the codebase stays out — Codex reads the code already.
+
+Always preserves any section tagged `<!-- managed-by: X -->`, so `failure-as-knowledge` entries never get clobbered by a mirror.
+
 ## Authentication
 
 Authentication is OAuth-only against your existing ChatGPT account. **No OpenAI API key is supported in v1** — that's deliberate, so the free-with-your-subscription value-prop holds. The token is encrypted at rest using the OS keychain when available (`keytar`), with an encrypted file fallback (`sodium-native`).
@@ -91,10 +156,12 @@ Edit `$CLAUDE_PLUGIN_DATA/codex-bridge/config.json` to override defaults. Schema
 | `diff_loc_threshold` | `500` | LOC-delta cutoff for sync-vs-bg routing. |
 | `max_retries` | `3` | Exponential-backoff retry count on 429 / 5xx. |
 | `log_level` | `info` | `debug` includes prompt bodies (locally only). |
+| `delegator_max_concurrent` | `4` | Max Codex sub-jobs the `implement-with-codex` skill runs at once. |
+| `delegator_isolate_worktrees` | `false` | If true, A/B and Ralph delegations spawn each agent in its own throwaway worktree. |
 
 ## Limitations (v1)
 
-- **Single Codex job per workspace.** Concurrent jobs are queued FIFO at depth 1; further enqueues are rejected with a pointer to `/codex:status`. Multi-job concurrency is on the v2 roadmap.
+- **Slash commands run single-job per workspace.** Concurrent slash-command jobs are queued FIFO at depth 1; further enqueues are rejected with a pointer to `/codex:status`. The `implement-with-codex` skill has its own registry and may run multiple Codex agents in parallel (default cap 4).
 - **Git-only.** Non-git workspaces are out of scope. The greenfield handler creates a throwaway `codex-review-base` branch when no commits exist; non-git directories error out with exit code 3.
 - **Windows path handling.** The reference plugin shipped with a Windows path bug. We have a dedicated path-normalization module and a regression test suite, but please file an issue if you hit anything unexpected.
 - **No telemetry.** All logs are local. We never phone home.

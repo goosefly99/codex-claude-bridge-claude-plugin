@@ -9,72 +9,130 @@
  *
  * Hard rules:
  *   - Never auto-init a non-git directory. If the user has no repo, exit code 3
- *     with a clear "run `git init` first" message. Auto-init crosses an
- *     autonomy line.
+ *     with a clear "run `git init` first" message.
  *   - All work happens on a side branch; HEAD is never touched.
- *   - Any failure rolls back so the user's repo is untouched.
  *
  * @module scripts/git/greenfield
  */
 
-/** Detected git state of the current workspace. */
-export type GitState =
-  /** No `.git` directory; not a git repo. */
-  | "no_repo"
-  /** Repo exists but has zero commits. */
-  | "empty_repo"
-  /** Normal repo with at least one commit. */
-  | "populated_repo";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
-/** Result of prepareReviewBase. */
+import { getLogger } from "../util/log.js";
+
+const log = getLogger("greenfield");
+const THROWAWAY_REF = "codex-review-base";
+
+export type GitState = "no_repo" | "empty_repo" | "populated_repo";
+
 export interface ReviewBase {
-  /** The base ref to diff against (a commit hash or branch name). */
   base: string;
-  /** The head ref (typically HEAD or the working tree). */
   head: string;
-  /** True if a throwaway ref was created and should be cleaned up later. */
   is_throwaway: boolean;
-  /** The throwaway branch name, if created (for cleanup). */
   throwaway_ref: string | null;
 }
 
-/**
- * Detect the git state of the current workspace.
- *
- * @returns The detected GitState.
- */
+function runGit(args: string[]): { code: number; stdout: string; stderr: string } {
+  const res = spawnSync("git", args, { encoding: "utf-8" });
+  return {
+    code: res.status ?? 1,
+    stdout: res.stdout ?? "",
+    stderr: res.stderr ?? "",
+  };
+}
+
 export async function detectGitState(): Promise<GitState> {
-  throw new Error("not implemented");
+  if (!existsSync(join(process.cwd(), ".git"))) {
+    const inside = runGit(["rev-parse", "--is-inside-work-tree"]);
+    if (inside.code !== 0) return "no_repo";
+  }
+  const headCheck = runGit(["rev-parse", "--verify", "HEAD"]);
+  if (headCheck.code === 0) return "populated_repo";
+  return "empty_repo";
 }
 
-/**
- * Prepare a diff base for review. Handles the greenfield case by creating a
- * throwaway branch when no commits exist. Idempotent and safe to call
- * repeatedly: if a throwaway branch already exists from a prior aborted run,
- * it is reused.
- *
- * Behavior:
- *   - "no_repo": throw ErrorKind.no_git_repo (exit 3). DO NOT auto-init.
- *   - "empty_repo": stage all working-tree files, create an empty initial
- *     commit on a throwaway `codex-review-base` branch, return that ref as
- *     base and HEAD-after-commit as head.
- *   - "populated_repo": resolve the user-provided ref (or default to
- *     uncommitted changes) and return without creating any throwaway.
- *
- * @returns The ReviewBase with concrete refs.
- * @throws ErrorKind.no_git_repo if there is no git repo at the workspace.
- * @throws ErrorKind.git_state on any other git failure (rolls back first).
- */
+function noRepoError(): Error {
+  const err = new Error("not a git repository; run `git init` first");
+  (err as Error & { cause?: unknown }).cause = { kind: "no_git_repo" };
+  return err;
+}
+
+function gitStateError(detail: string): Error {
+  const err = new Error(`git state error: ${detail}`);
+  (err as Error & { cause?: unknown }).cause = { kind: "git_state" };
+  return err;
+}
+
 export async function prepareReviewBase(): Promise<ReviewBase> {
-  throw new Error("not implemented");
+  const state = await detectGitState();
+
+  if (state === "no_repo") throw noRepoError();
+
+  if (state === "populated_repo") {
+    const head = runGit(["rev-parse", "HEAD"]);
+    if (head.code !== 0) throw gitStateError(head.stderr.trim());
+    return {
+      base: "HEAD",
+      head: "HEAD",
+      is_throwaway: false,
+      throwaway_ref: null,
+    };
+  }
+
+  // empty_repo path: stage everything, create the throwaway branch with a
+  // single empty initial commit. We never touch the user's HEAD (it doesn't
+  // exist yet — empty repo).
+  const refCheck = runGit(["show-ref", "--verify", `refs/heads/${THROWAWAY_REF}`]);
+  if (refCheck.code === 0) {
+    log.debug("throwaway branch already exists; reusing", { ref: THROWAWAY_REF });
+    return {
+      base: THROWAWAY_REF,
+      head: "HEAD",
+      is_throwaway: true,
+      throwaway_ref: THROWAWAY_REF,
+    };
+  }
+
+  // Use --allow-empty so we don't need any staged files.
+  const checkout = runGit(["checkout", "--orphan", THROWAWAY_REF]);
+  if (checkout.code !== 0) throw gitStateError(checkout.stderr.trim());
+
+  const cleanIndex = runGit(["rm", "-rf", "--cached", "."]);
+  // Empty repo: nothing to clean. Ignore non-zero exit on this one.
+  if (cleanIndex.code !== 0)
+    log.debug("rm --cached returned non-zero (likely empty)", { stderr: cleanIndex.stderr });
+
+  const commit = runGit([
+    "-c",
+    "user.email=codex-bridge@local",
+    "-c",
+    "user.name=codex-bridge",
+    "commit",
+    "--allow-empty",
+    "-m",
+    "codex-review-base (throwaway)",
+  ]);
+  if (commit.code !== 0) throw gitStateError(commit.stderr.trim());
+
+  // Detach so we're not "on" the throwaway branch; revert to working-tree state.
+  const detach = runGit(["checkout", "--detach"]);
+  if (detach.code !== 0) {
+    // Non-fatal — user can recover. Log and continue.
+    log.warn("post-throwaway detach failed", { stderr: detach.stderr });
+  }
+
+  return {
+    base: THROWAWAY_REF,
+    head: "HEAD",
+    is_throwaway: true,
+    throwaway_ref: THROWAWAY_REF,
+  };
 }
 
-/**
- * Clean up a throwaway ref created by prepareReviewBase. Idempotent.
- *
- * @param refName The throwaway branch name to delete.
- * @returns true if the ref existed and was deleted; false otherwise.
- */
-export async function cleanupReviewBase(_refName: string): Promise<boolean> {
-  throw new Error("not implemented");
+export async function cleanupReviewBase(refName: string): Promise<boolean> {
+  const exists = runGit(["show-ref", "--verify", `refs/heads/${refName}`]);
+  if (exists.code !== 0) return false;
+  const del = runGit(["branch", "-D", refName]);
+  return del.code === 0;
 }
