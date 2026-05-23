@@ -1,6 +1,6 @@
 {
   "$schema": "./schemas/config.json",
-  "model": "gpt-5.4-codex",
+  "model": "gpt-5.5",
   "api_base": "https://api.openai.com/v1",
   "diff_files_threshold": 8,
   "diff_loc_threshold": 500,

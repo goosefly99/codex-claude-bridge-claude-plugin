@@ -3,7 +3,7 @@ name: codex:status
 description: Inspect the current background Codex job. Shows command label, state (idle/running/completed-pending-delivery), start time, elapsed seconds, and any FIFO-queued requests.
 argument_hint: (no arguments)
 allowed_tools: ["Bash", "Read"]
-script: ${CLAUDE_PLUGIN_ROOT}/scripts/concurrency/jobManager.ts
+script: ${CLAUDE_PLUGIN_ROOT}/dist/concurrency/cli-status.js
 ---
 
 # /codex:status

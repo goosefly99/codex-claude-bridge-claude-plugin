@@ -15,9 +15,10 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { spawn } from "node:child_process";
 
 import { getConfig } from "../util/config.js";
 import { getLogger } from "../util/log.js";
@@ -57,10 +58,24 @@ function workspaceHash(): string {
   return createHash("sha256").update(process.cwd()).digest("hex").slice(0, 16);
 }
 
+function dataRoot(): string {
+  return process.env["CLAUDE_PLUGIN_DATA"] ?? join(homedir(), ".claude", "plugin-data");
+}
+
 function registryPath(registry: Registry): string {
-  const data =
-    process.env["CLAUDE_PLUGIN_DATA"] ?? join(homedir(), ".claude", "plugin-data");
-  return join(data, "codex-bridge", "jobs", workspaceHash(), `${registry}.json`);
+  return join(dataRoot(), "codex-bridge", "jobs", workspaceHash(), `${registry}.json`);
+}
+
+function resultsDir(): string {
+  return join(dataRoot(), "codex-bridge", "results");
+}
+
+function resultPath(jobId: string): string {
+  return join(resultsDir(), `${jobId}.json`);
+}
+
+function deliveredPath(jobId: string): string {
+  return join(resultsDir(), `${jobId}.delivered`);
 }
 
 function readRegistry(registry: Registry): RegistryFile {
@@ -237,4 +252,96 @@ export async function cancelById(id: string): Promise<boolean> {
     if (file.active.length !== before) writeRegistry(reg, file);
   }
   return true;
+}
+
+/**
+ * Spawn a detached child process that survives the parent's exit.
+ *
+ * The child's PID is written into the job record before this function
+ * returns. On POSIX, `detached: true` starts a new session; `.unref()`
+ * lets the event loop drain in the parent. On Windows, `windowsHide: true`
+ * keeps the child from opening a console window.
+ *
+ * @param jobId  The already-registered job ID (used only for logging).
+ * @param cmd    Executable to spawn (usually `process.execPath`).
+ * @param args   Arguments forwarded to the child.
+ * @param extraEnv  Additional environment variables merged into the child env.
+ */
+export function spawnDetached(
+  jobId: string,
+  cmd: string,
+  args: string[],
+  extraEnv: Record<string, string> = {},
+): void {
+  const child = spawn(cmd, args, {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+    env: { ...process.env, ...extraEnv },
+  });
+  child.unref();
+  log.info("detached child spawned", { jobId, pid: child.pid });
+}
+
+export interface JobResult {
+  jobId: string;
+  command: string;
+  result?: unknown;
+  error?: string;
+  completed_at: string;
+}
+
+/**
+ * Write the result of a detached background job to the results directory.
+ * Called by CLI wrappers at the end of their run when CODEX_BRIDGE_JOB_ID
+ * is present in the environment.
+ */
+export function writeJobResult(
+  jobId: string,
+  command: string,
+  result: unknown,
+  error?: string,
+): void {
+  const dir = resultsDir();
+  mkdirSync(dir, { recursive: true });
+  const envelope: JobResult = {
+    jobId,
+    command,
+    completed_at: new Date().toISOString(),
+    ...(error ? { error } : { result }),
+  };
+  writeFileSync(resultPath(jobId), JSON.stringify(envelope, null, 2), { mode: 0o600 });
+  log.info("background job result written", { jobId });
+}
+
+/**
+ * Read all job results that have not yet been delivered to the user.
+ * `/codex:status` calls this and then marks each one as delivered.
+ */
+export function readUndeliveredResults(): JobResult[] {
+  const dir = resultsDir();
+  if (!existsSync(dir)) return [];
+  const out: JobResult[] = [];
+  for (const entry of readdirSync(dir)) {
+    if (!entry.endsWith(".json")) continue;
+    const jobId = entry.slice(0, -5);
+    if (existsSync(deliveredPath(jobId))) continue;
+    try {
+      const raw = readFileSync(join(dir, entry), "utf-8");
+      out.push(JSON.parse(raw) as JobResult);
+    } catch {
+      /* corrupt file — skip */
+    }
+  }
+  return out;
+}
+
+/**
+ * Mark a background job result as delivered so it is not surfaced again
+ * by the next `/codex:status` call.
+ */
+export function markResultDelivered(jobId: string): void {
+  const dir = resultsDir();
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(deliveredPath(jobId), "", { mode: 0o600 });
 }

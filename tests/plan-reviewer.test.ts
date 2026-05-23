@@ -139,7 +139,7 @@ describe("schemas/plan-review-output.json shape", () => {
 
   it("uses the canonical $id for the plan-review-output schema", () => {
     expect(schema.$id).toBe(
-      "https://github.com/TBD/codex-claude-bridge/schemas/plan-review-output.json",
+      "https://github.com/goosefly99/codex-claude-bridge-claude-plugin/schemas/plan-review-output.json",
     );
   });
 });

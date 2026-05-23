@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/TBD/codex-claude-bridge/schemas/plan-review-output.json",
+  "$id": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin/schemas/plan-review-output.json",
   "title": "PlanReviewOutput",
   "description": "Structured output of the adversarial-plan-review skill. Validated by planReviewer.runPlanReview before being surfaced to the user. The six-category gap taxonomy is the differentiator and is hard-coded in prompts/plan-review-system.md.",
   "type": "object",

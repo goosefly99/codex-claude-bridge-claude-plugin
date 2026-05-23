@@ -8,8 +8,16 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "bin": {
+    "codex-bridge-auth": "dist/auth/cli-setup.js",
+    "codex-bridge-review": "dist/codex/cli-review.js",
+    "codex-bridge-rescue": "dist/codex/cli-rescue.js",
+    "codex-bridge-status": "dist/concurrency/cli-status.js",
+    "codex-bridge-adversarial": "dist/codex/cli-adversarial.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
     "watch": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint scripts tests --ext .ts --max-warnings 0",
@@ -30,15 +38,15 @@
     "adversarial-review",
     "qa"
   ],
-  "author": "TBD",
+  "author": "goosefly99",
   "license": "MIT",
-  "homepage": "https://github.com/TBD/codex-claude-bridge",
+  "homepage": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin",
   "repository": {
     "type": "git",
-    "url": "https://github.com/TBD/codex-claude-bridge.git"
+    "url": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin.git"
   },
   "bugs": {
-    "url": "https://github.com/TBD/codex-claude-bridge/issues"
+    "url": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin/issues"
   },
   "dependencies": {
     "ajv": "^8.17.1",

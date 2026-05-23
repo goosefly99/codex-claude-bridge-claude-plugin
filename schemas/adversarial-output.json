@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/TBD/codex-claude-bridge/schemas/adversarial-output.json",
+  "$id": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin/schemas/adversarial-output.json",
   "title": "AdversarialOutput",
   "description": "Structured output of /codex:adversarial-review. Validated by adversarialEngine.dispatchAndValidate before being surfaced to the user or emitted as a tool-result.",
   "type": "object",

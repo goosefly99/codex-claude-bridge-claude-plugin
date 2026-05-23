@@ -287,3 +287,42 @@ export async function runAdversarialReview(
     }
   }
 }
+
+/**
+ * Run a neutral (non-adversarial) code review using `prompts/review-system.md`.
+ * Returns prose rather than structured JSON.
+ */
+export async function runNeutralReview(
+  target?: string,
+  opts?: Pick<AdversarialOptions, "effort" | "background" | "wait" | "steering">,
+): Promise<string> {
+  const effort = opts?.effort ?? "medium";
+  const refs = await resolveTarget(target);
+  try {
+    const ctx = await collectContext({ base: refs.base, head: refs.head });
+    const systemPath = resolve(PLUGIN_ROOT, "prompts", "review-system.md");
+    const system = readFileSync(systemPath, "utf-8");
+    const lines: string[] = [];
+    if (opts?.steering) {
+      lines.push("Steering directive from the user:");
+      lines.push(opts.steering);
+      lines.push("");
+    }
+    lines.push("Diff under review:");
+    lines.push("```diff");
+    lines.push(ctx.diff);
+    lines.push("```");
+    const messages: ChatMessage[] = [
+      { role: "system", content: system },
+      { role: "user", content: lines.join("\n") },
+    ];
+    const result = await sendCompletion(messages, { reasoning_effort: effort });
+    return result.message.content;
+  } finally {
+    if (refs.throwaway) {
+      await cleanupReviewBase(refs.throwaway).catch(() => {
+        /* best-effort */
+      });
+    }
+  }
+}

@@ -3,7 +3,7 @@ name: codex:adversarial-review
 description: Hostile code review of the current diff across 7 hard-coded attack surfaces (Authentication, Data loss, Rollbacks, Race conditions, Degraded dependencies, Version skew, Observability gaps). Returns structured JSON consumable by Claude plan mode for closed-loop fix implementation.
 argument_hint: "[--effort low|medium|high] [--focus <surface>] [--background|--wait] [<git-ref>]"
 allowed_tools: ["Bash", "Read"]
-script: ${CLAUDE_PLUGIN_ROOT}/scripts/codex/adversarialEngine.ts
+script: ${CLAUDE_PLUGIN_ROOT}/dist/codex/cli-adversarial.js
 ---
 
 # /codex:adversarial-review

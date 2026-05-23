@@ -3,7 +3,7 @@ name: codex:review
 description: Neutral code review of the current diff using OpenAI Codex. Auto-classifies large diffs (8 files / 500 LOC defaults) and supports --background / --wait routing.
 argument_hint: "[--effort low|medium|high] [--background|--wait] [<git-ref>]"
 allowed_tools: ["Bash", "Read"]
-script: ${CLAUDE_PLUGIN_ROOT}/scripts/codex/adversarialEngine.ts
+script: ${CLAUDE_PLUGIN_ROOT}/dist/codex/cli-review.js
 ---
 
 # /codex:review

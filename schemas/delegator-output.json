@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/TBD/codex-claude-bridge/schemas/delegator-output.json",
+  "$id": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin/schemas/delegator-output.json",
   "title": "DelegationResult",
   "description": "Structured output of a single Codex sub-job invoked by scripts/codex/delegator.ts. The implement-with-codex skill aggregates one or more of these into a user-facing summary.",
   "type": "object",

@@ -2,7 +2,7 @@
 
 > Two models. One review. Zero blind spots.
 
-A Claude Code marketplace plugin that wraps **OpenAI Codex** (GPT-5.4-class) as an adversarial reviewer and execution-rescue tool, runnable from inside any Claude Code session.
+A Claude Code marketplace plugin that wraps **OpenAI Codex** (gpt-5.5) as an adversarial reviewer and execution-rescue tool, runnable from inside any Claude Code session.
 
 ## What it does
 
@@ -10,7 +10,7 @@ A Claude Code marketplace plugin that wraps **OpenAI Codex** (GPT-5.4-class) as 
 
 | Command | Purpose |
 | --- | --- |
-| `/codex:setup` | Authenticate with your existing ChatGPT account (browser OAuth, no API key). |
+| `/codex:setup` | Validate your `OPENAI_API_KEY` and verify the endpoint is reachable. |
 | `/codex:review` | Neutral code review of the current diff. |
 | `/codex:adversarial-review` | Hostile review across 7 hard-coded attack surfaces. Returns structured JSON. |
 | `/codex:rescue` | Hand a Claude-authored plan to Codex for execution. |
@@ -29,17 +29,23 @@ This plugin gives Claude Code a second adversarial reviewer that doesn't share C
 Three steps. Each takes seconds.
 
 ```text
-/plugin marketplace add https://github.com/TBD/codex-claude-bridge
+/plugin marketplace add https://github.com/goosefly99/codex-claude-bridge-claude-plugin
 /plugin install codex-claude-bridge
 /codex:setup
 ```
 
-`/codex:setup` opens your default browser, walks you through ChatGPT OAuth, and caches the resulting token under `$CLAUDE_PLUGIN_DATA/codex-bridge/auth.json` (mode 0600 on Unix; ACL-restricted on Windows). Free, Plus, Pro, Team, and Enterprise ChatGPT tiers all work.
+Before running `/codex:setup`, export your OpenAI API key:
+
+```text
+export OPENAI_API_KEY=sk-...
+```
+
+`/codex:setup` validates the key and confirms the endpoint is reachable. The same key used by the `codex` CLI works here — no separate setup needed if you already have `codex` configured.
 
 ## Commands
 
 ### `/codex:setup`
-Browser-based OAuth against your ChatGPT account. Run once per machine, or again whenever the cached token expires.
+Validates `OPENAI_API_KEY` and probes the Codex endpoint. Run once per machine, or again after rotating your key.
 
 ```text
 /codex:setup
@@ -142,7 +148,7 @@ Always preserves any section tagged `<!-- managed-by: X -->`, so `failure-as-kno
 
 ## Authentication
 
-Authentication is OAuth-only against your existing ChatGPT account. **No OpenAI API key is supported in v1** — that's deliberate, so the free-with-your-subscription value-prop holds. The token is encrypted at rest using the OS keychain when available (`keytar`), with an encrypted file fallback (`sodium-native`).
+Authentication uses your `OPENAI_API_KEY` environment variable — the same key the `codex` CLI uses. Set it in your shell before running `/codex:setup`. The key is read at call time and never persisted to disk by the plugin.
 
 ## Configuration
 
@@ -150,7 +156,7 @@ Edit `$CLAUDE_PLUGIN_DATA/codex-bridge/config.json` to override defaults. Schema
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `model` | `gpt-5.4-codex` | Model alias used for all commands. |
+| `model` | `gpt-5.5` | Model alias used for all commands. |
 | `api_base` | `https://api.openai.com/v1` | Codex/Chat Completions endpoint. |
 | `diff_files_threshold` | `8` | Files-changed cutoff for sync-vs-bg routing. |
 | `diff_loc_threshold` | `500` | LOC-delta cutoff for sync-vs-bg routing. |

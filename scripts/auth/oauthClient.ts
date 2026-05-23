@@ -1,40 +1,30 @@
 /**
- * ChatGPT OAuth client with PKCE.
+ * API-key auth shim for codex-claude-bridge.
  *
- * Implements the browser-based OAuth flow tied to a user's ChatGPT account.
- * All five slash commands depend on this subsystem for credentials.
+ * The original design used browser-based OAuth tied to a ChatGPT account.
+ * This implementation replaces that with OPENAI_API_KEY from the environment,
+ * matching how the installed `codex` CLI handles auth. The exported surface
+ * (OAuthToken, authorize, refresh, getToken, revoke) is preserved so callers
+ * need no changes.
  *
- * Design decision (DI-2): API-key fallback is NOT supported in v1. Auth is
- * OAuth-via-ChatGPT only, preserving the "free with your existing
- * subscription" value proposition.
- *
- * Endpoint targets (Phase 0 source-inspection of the OpenAI reference plugin
- * is required before locking these in). Provisional values:
- *   - Authorization: https://auth.openai.com/oauth/authorize
- *   - Token exchange: https://auth.openai.com/oauth/token
- *   - Token refresh: same endpoint with grant_type=refresh_token
+ * Setup: set OPENAI_API_KEY in your environment (or via `codex login`).
+ * The `codex` binary and this plugin will both pick it up automatically.
  *
  * @module scripts/auth/oauthClient
  */
 
-import { createHash, randomBytes } from "node:crypto";
-import { createServer } from "node:http";
-import { exec } from "node:child_process";
-
 import { fetch } from "undici";
 
+import { getLogger } from "../util/log.js";
 import { getConfig } from "../util/config.js";
-import { getLogger, type Logger } from "../util/log.js";
-import { load as loadToken, save as saveToken } from "./tokenStore.js";
 
 const log = getLogger("oauth");
 
-const DEFAULT_AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";
-const DEFAULT_TOKEN_URL = "https://auth.openai.com/oauth/token";
-const DEFAULT_CLIENT_ID = "codex-claude-bridge";
-const DEFAULT_PORT_RANGE: [number, number] = [49152, 65535];
-const REFRESH_LEAD_RATIO = 0.1;
-
+/**
+ * Token shape kept for interface compatibility. When using API-key auth,
+ * `access_token` is the API key value and `expires_at` is set far in the
+ * future (API keys don't expire on their own).
+ */
 export interface OAuthToken {
   access_token: string;
   refresh_token: string;
@@ -44,226 +34,99 @@ export interface OAuthToken {
   account_email?: string;
 }
 
+/** Retained for interface compatibility. Not used with API-key auth. */
 export interface OAuthOptions {
   authorize_url?: string;
   token_url?: string;
   client_id?: string;
   callback_port_range?: [number, number];
-  logger?: Logger;
+  logger?: unknown;
 }
 
-function pkceVerifier(): string {
-  return randomBytes(32).toString("base64url");
-}
-
-function pkceChallenge(verifier: string): string {
-  return createHash("sha256").update(verifier).digest("base64url");
-}
-
-function openBrowser(url: string): void {
-  const platform = process.platform;
-  let cmd: string;
-  if (platform === "win32") {
-    cmd = `start "" "${url}"`;
-  } else if (platform === "darwin") {
-    cmd = `open "${url}"`;
-  } else {
-    cmd = `xdg-open "${url}"`;
-  }
-  exec(cmd, (err) => {
-    if (err) log.warn("could not launch browser; open the URL manually", { url });
-  });
-}
-
-interface AuthCodeCapture {
-  code: string;
-  state: string;
-}
-
-function startCallbackServer(
-  expectedState: string,
-  portRange: [number, number],
-): Promise<{ port: number; result: Promise<{ code: string; redirect_uri: string }> }> {
-  return new Promise((resolveBound, rejectBound) => {
-    const port =
-      portRange[0] + Math.floor(Math.random() * (portRange[1] - portRange[0]));
-    let resolveResult: (v: { code: string; redirect_uri: string }) => void;
-    let rejectResult: (e: Error) => void;
-    const result = new Promise<{ code: string; redirect_uri: string }>((res, rej) => {
-      resolveResult = res;
-      rejectResult = rej;
-    });
-
-    const server = createServer((req, res) => {
-      const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
-      const code = url.searchParams.get("code");
-      const state = url.searchParams.get("state");
-      const errParam = url.searchParams.get("error");
-
-      if (errParam) {
-        res.writeHead(400, { "Content-Type": "text/plain" });
-        res.end("OAuth error: " + errParam);
-        server.close();
-        rejectResult(new Error("OAuth authorization error: " + errParam));
-        return;
-      }
-      if (!code || !state || state !== expectedState) {
-        res.writeHead(400, { "Content-Type": "text/plain" });
-        res.end("Bad callback: missing or mismatched state.");
-        server.close();
-        rejectResult(new Error("OAuth callback missing or mismatched state"));
-        return;
-      }
-
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(
-        "<html><body><h3>Authenticated. You may close this tab.</h3></body></html>",
-      );
-      const capture: AuthCodeCapture = { code, state };
-      server.close();
-      resolveResult({
-        code: capture.code,
-        redirect_uri: `http://127.0.0.1:${port}/callback`,
-      });
-    });
-
-    server.on("error", (err) => {
-      rejectBound(err);
-    });
-
-    server.listen(port, "127.0.0.1", () => {
-      resolveBound({ port, result });
-    });
-  });
-}
-
-interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type?: string;
-  expires_in?: number;
-  scope?: string;
-  account_email?: string;
-}
-
-async function exchange(
-  tokenUrl: string,
-  body: Record<string, string>,
-): Promise<OAuthToken> {
-  const res = await fetch(tokenUrl, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(body).toString(),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    const err = new Error(`token endpoint returned ${res.status}: ${text}`);
+function requireApiKey(): string {
+  const key = process.env["OPENAI_API_KEY"];
+  if (!key?.trim()) {
+    const err = new Error(
+      "OPENAI_API_KEY is not set. Export it in your shell or set it in your environment before running /codex:setup.",
+    );
     (err as Error & { cause?: unknown }).cause = { kind: "auth_failed" };
     throw err;
   }
+  return key.trim();
+}
 
-  const data = (await res.json()) as TokenResponse;
-  const expiresIn = data.expires_in ?? 3600;
-  const expires_at = Date.now() + expiresIn * 1000;
-  const token: OAuthToken = {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
+function syntheticToken(apiKey: string): OAuthToken {
+  return {
+    access_token: apiKey,
+    refresh_token: "",
     token_type: "Bearer",
-    expires_at,
-    ...(data.scope ? { scope: data.scope } : {}),
-    ...(data.account_email ? { account_email: data.account_email } : {}),
+    expires_at: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year — API keys don't expire
   };
-  return token;
 }
 
-export async function authorize(opts?: OAuthOptions): Promise<OAuthToken> {
+/**
+ * "Authorize": validate that OPENAI_API_KEY is set and that a probe call
+ * to the API succeeds. No browser flow.
+ */
+export async function authorize(_opts?: OAuthOptions): Promise<OAuthToken> {
+  const apiKey = requireApiKey();
   const cfg = await getConfig();
-  const authorizeUrl = opts?.authorize_url ?? cfg.oauth_authorize_url ?? DEFAULT_AUTHORIZE_URL;
-  const tokenUrl = opts?.token_url ?? cfg.oauth_token_url ?? DEFAULT_TOKEN_URL;
-  const clientId = opts?.client_id ?? cfg.oauth_client_id ?? DEFAULT_CLIENT_ID;
-  const portRange = opts?.callback_port_range ?? DEFAULT_PORT_RANGE;
-
-  const verifier = pkceVerifier();
-  const challenge = pkceChallenge(verifier);
-  const state = randomBytes(16).toString("base64url");
-
-  const { port, result: callbackPromise } = await startCallbackServer(state, portRange);
-  const redirect_uri = `http://127.0.0.1:${port}/callback`;
-
-  const authUrl = new URL(authorizeUrl);
-  authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("client_id", clientId);
-  authUrl.searchParams.set("redirect_uri", redirect_uri);
-  authUrl.searchParams.set("code_challenge", challenge);
-  authUrl.searchParams.set("code_challenge_method", "S256");
-  authUrl.searchParams.set("state", state);
-  authUrl.searchParams.set("scope", "codex.invoke profile email");
-
-  openBrowser(authUrl.toString());
-  log.info("waiting for browser OAuth callback", { authorize_url: authorizeUrl });
-
-  const callback = await Promise.race([
-    callbackPromise,
-    new Promise<never>((_, rej) =>
-      setTimeout(
-        () => rej(new Error("OAuth callback timed out after 5 minutes")),
-        5 * 60_000,
-      ),
-    ),
-  ]);
-
-  const token = await exchange(tokenUrl, {
-    grant_type: "authorization_code",
-    code: callback.code,
-    code_verifier: verifier,
-    client_id: clientId,
-    redirect_uri: callback.redirect_uri,
-  });
-
-  await saveToken(token);
-  return token;
-}
-
-export async function refresh(token: OAuthToken, opts?: OAuthOptions): Promise<OAuthToken> {
-  const cfg = await getConfig();
-  const tokenUrl = opts?.token_url ?? cfg.oauth_token_url ?? DEFAULT_TOKEN_URL;
-  const clientId = opts?.client_id ?? cfg.oauth_client_id ?? DEFAULT_CLIENT_ID;
-
-  const refreshed = await exchange(tokenUrl, {
-    grant_type: "refresh_token",
-    refresh_token: token.refresh_token,
-    client_id: clientId,
-  });
-  await saveToken(refreshed);
-  return refreshed;
-}
-
-export async function getToken(): Promise<string> {
-  const cached = await loadToken();
-  if (!cached) {
-    const err = new Error("no cached token; run /codex:setup");
-    (err as Error & { cause?: unknown }).cause = { kind: "auth_failed" };
-    throw err;
-  }
-
-  const now = Date.now();
-  const lead = Math.max(60_000, (cached.expires_at - now) * REFRESH_LEAD_RATIO);
-  if (now + lead >= cached.expires_at) {
-    try {
-      const fresh = await refresh(cached);
-      return fresh.access_token;
-    } catch (err) {
-      const wrapped = new Error("token refresh failed; re-run /codex:setup");
-      (wrapped as Error & { cause?: unknown }).cause = { kind: "auth_failed", original: String(err) };
-      throw wrapped;
+  const url = `${cfg.api_base.replace(/\/+$/, "")}/chat/completions`;
+  log.info("API-key auth: probing endpoint");
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 1,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.status === 401) {
+      const err = new Error("OPENAI_API_KEY is invalid or has insufficient permissions.");
+      (err as Error & { cause?: unknown }).cause = { kind: "auth_failed" };
+      throw err;
     }
+  } catch (err) {
+    if (err instanceof Error && (err as Error & { cause?: unknown }).cause) throw err;
+    const wrapped = new Error(
+      `API key probe failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    (wrapped as Error & { cause?: unknown }).cause = { kind: "auth_failed", original: String(err) };
+    throw wrapped;
   }
-
-  return cached.access_token;
+  log.info("API-key auth verified");
+  return syntheticToken(apiKey);
 }
 
+/**
+ * Refresh: API keys don't expire, so this is a no-op that returns the same
+ * synthetic token.
+ */
+export async function refresh(
+  _token: OAuthToken,
+  _opts?: OAuthOptions,
+): Promise<OAuthToken> {
+  return syntheticToken(requireApiKey());
+}
+
+/**
+ * Return the raw API key as the bearer string. Called by transport.ts before
+ * every request.
+ */
+export async function getToken(): Promise<string> {
+  return requireApiKey();
+}
+
+/**
+ * Revoke: API keys are managed in the OpenAI dashboard, not by this plugin.
+ * This is a no-op.
+ */
 export async function revoke(): Promise<void> {
-  const { clear } = await import("./tokenStore.js");
-  await clear();
+  log.info("revoke() is a no-op with API-key auth; remove the key via the OpenAI dashboard.");
 }

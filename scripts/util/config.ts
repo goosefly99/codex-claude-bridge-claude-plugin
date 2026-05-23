@@ -45,7 +45,7 @@ export interface PluginConfig {
 
 /** Default config values, used when no on-disk config is present. */
 export const DEFAULT_CONFIG: PluginConfig = {
-  model: "gpt-5.4-codex",
+  model: "gpt-5.5",
   api_base: "https://api.openai.com/v1",
   diff_files_threshold: 8,
   diff_loc_threshold: 500,

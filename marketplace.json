@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "title": "Codex × Claude Bridge",
   "tagline": "Adversarial code review and execution rescue powered by OpenAI Codex, inside Claude Code.",
-  "description": "A Claude Code marketplace plugin that wraps OpenAI Codex as an adversarial reviewer, execution-rescue tool, parallel delegation surface, and Codex-methods skill suite. Five slash commands mirror the OpenAI reference plugin to preserve muscle memory; the flagship /codex:adversarial-review hard-codes a 7-attack-surface taxonomy (Authentication, Data loss, Rollbacks, Race conditions, Degraded dependencies, Version skew, Observability gaps) and emits structured JSON that Claude plan mode can re-read for closed-loop fixes. Five agentic skills: implement-with-codex (P1/P3/P4/P5/P7 parallel delegation), adversarial-plan-review (Kashef plan-stage review with a locked 6-category taxonomy and a revision loop), browser-verify (UI verification via Playwright MCP / @browseruse / Codex Chrome plugin), failure-as-knowledge (deduped error log written to AGENTS.md), and agents-md-sync (lean AGENTS.md ↔ CLAUDE.md sync). Authentication is browser OAuth tied to your existing ChatGPT account — no API key required.",
+  "description": "A Claude Code marketplace plugin that wraps OpenAI Codex as an adversarial reviewer, execution-rescue tool, parallel delegation surface, and Codex-methods skill suite. Five slash commands mirror the OpenAI reference plugin to preserve muscle memory; the flagship /codex:adversarial-review hard-codes a 7-attack-surface taxonomy (Authentication, Data loss, Rollbacks, Race conditions, Degraded dependencies, Version skew, Observability gaps) and emits structured JSON that Claude plan mode can re-read for closed-loop fixes. Five agentic skills: implement-with-codex (P1/P3/P4/P5/P7 parallel delegation), adversarial-plan-review (Kashef plan-stage review with a locked 6-category taxonomy and a revision loop), browser-verify (UI verification via Playwright MCP / @browseruse / Codex Chrome plugin), failure-as-knowledge (deduped error log written to AGENTS.md), and agents-md-sync (lean AGENTS.md ↔ CLAUDE.md sync). Authentication uses your OPENAI_API_KEY — the same key the codex CLI uses.",
   "category": "code-quality",
   "subcategories": ["code-review", "qa", "developer-tools"],
   "tags": [
@@ -26,15 +26,15 @@
     "knowledge-capture"
   ],
   "author": {
-    "name": "TBD",
-    "email": "TBD",
-    "url": "https://github.com/TBD"
+    "name": "goosefly99",
+    "email": "goosefly99@users.noreply.github.com",
+    "url": "https://github.com/goosefly99"
   },
   "license": "MIT",
-  "homepage": "https://github.com/TBD/codex-claude-bridge",
-  "repository": "https://github.com/TBD/codex-claude-bridge.git",
-  "issues": "https://github.com/TBD/codex-claude-bridge/issues",
-  "documentation": "https://github.com/TBD/codex-claude-bridge#readme",
+  "homepage": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin",
+  "repository": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin.git",
+  "issues": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin/issues",
+  "documentation": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin#readme",
   "screenshots": [],
   "platforms": ["linux", "darwin", "win32"],
   "engines": {
@@ -43,7 +43,7 @@
   },
   "minimum_claude_code_version": "1.0.0",
   "install": {
-    "command": "/plugin marketplace add https://github.com/TBD/codex-claude-bridge",
+    "command": "/plugin marketplace add https://github.com/goosefly99/codex-claude-bridge-claude-plugin",
     "post_install": "/plugin install codex-claude-bridge",
     "first_run": "/codex:setup"
   },

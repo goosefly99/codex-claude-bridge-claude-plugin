@@ -29,4 +29,11 @@ export default [
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
+  {
+    // CLI entry points need console output by design; override must come last.
+    files: ["scripts/**/cli-*.ts"],
+    rules: {
+      "no-console": "off",
+    },
+  },
 ];

@@ -3,7 +3,7 @@ name: codex:rescue
 description: Hand a Claude-authored plan to OpenAI Codex for execution. Mutates the working tree under user-confirmed permissions; the first file write requires explicit confirmation.
 argument_hint: "<plan-or-task-description>"
 allowed_tools: ["Bash", "Read", "Write", "Edit"]
-script: ${CLAUDE_PLUGIN_ROOT}/scripts/codex/adversarialEngine.ts
+script: ${CLAUDE_PLUGIN_ROOT}/dist/codex/cli-rescue.js
 ---
 
 # /codex:rescue

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/TBD/codex-claude-bridge/schemas/config.json",
+  "$id": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin/schemas/config.json",
   "title": "PluginConfig",
   "description": "Schema for the codex-claude-bridge plugin's config.json. Defaults ship at <plugin-root>/config.json; per-machine overrides at ${CLAUDE_PLUGIN_DATA}/codex-bridge/config.json shallow-merge over the defaults.",
   "type": "object",
