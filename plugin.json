@@ -1,18 +1,13 @@
 {
-  "$schema": "https://docs.claude.com/schemas/claude-code-plugin.v1.json",
   "name": "codex-claude-bridge",
   "version": "0.1.0",
   "description": "Wraps OpenAI Codex (GPT-5.4-class) inside Claude Code as an adversarial reviewer and execution rescue tool. Five slash commands (/codex:setup, /codex:review, /codex:adversarial-review, /codex:rescue, /codex:status) with a hard-coded 7-attack-surface taxonomy and structured-JSON output for closed-loop plan-mode integration.",
   "author": {
-    "name": "TBD",
-    "email": "TBD"
+    "name": "goosefly99"
   },
   "license": "MIT",
-  "homepage": "https://github.com/TBD/codex-claude-bridge",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/TBD/codex-claude-bridge.git"
-  },
+  "homepage": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin",
+  "repository": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin.git",
   "keywords": [
     "codex",
     "openai",
@@ -20,65 +15,5 @@
     "code-review",
     "qa",
     "claude-code-plugin"
-  ],
-  "engines": {
-    "claude-code": ">=1.0.0",
-    "node": ">=20.0.0"
-  },
-  "platforms": ["linux", "darwin", "win32"],
-  "permissions": {
-    "network": ["api.openai.com", "auth.openai.com", "chat.openai.com"],
-    "filesystem": {
-      "read": ["${CLAUDE_PLUGIN_ROOT}", "${workspace}"],
-      "write": ["${CLAUDE_PLUGIN_DATA}/codex-bridge"]
-    },
-    "git": ["read", "branch-create", "branch-delete"]
-  },
-  "assets": {
-    "scripts": "scripts/",
-    "prompts": "prompts/",
-    "schemas": "schemas/"
-  },
-  "commands": [
-    {
-      "id": "codex:setup",
-      "name": "codex:setup",
-      "file": "commands/setup.md",
-      "description": "Authenticate with your ChatGPT account via browser-based OAuth and cache the token locally.",
-      "argument_hint": "(no arguments)",
-      "category": "auth"
-    },
-    {
-      "id": "codex:review",
-      "name": "codex:review",
-      "file": "commands/review.md",
-      "description": "Neutral code review of the current diff using Codex. Auto-classifies large diffs and supports --background / --wait.",
-      "argument_hint": "[--effort low|medium|high] [--background|--wait] [<git-ref>]",
-      "category": "review"
-    },
-    {
-      "id": "codex:adversarial-review",
-      "name": "codex:adversarial-review",
-      "file": "commands/adversarial-review.md",
-      "description": "Hostile code review across 7 hard-coded attack surfaces. Returns structured JSON consumable by Claude plan mode.",
-      "argument_hint": "[--effort low|medium|high] [--focus <surface>] [--background|--wait] [<git-ref>]",
-      "category": "review"
-    },
-    {
-      "id": "codex:rescue",
-      "name": "codex:rescue",
-      "file": "commands/rescue.md",
-      "description": "Hand a Claude-authored plan to Codex for execution. Mutates the working tree under user-confirmed permissions.",
-      "argument_hint": "<plan-or-task-description>",
-      "category": "execution"
-    },
-    {
-      "id": "codex:status",
-      "name": "codex:status",
-      "file": "commands/status.md",
-      "description": "Inspect the current background Codex job (state, elapsed time, queued requests).",
-      "argument_hint": "(no arguments)",
-      "category": "introspection"
-    }
   ]
 }
