@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 /**
- * CLI entry point for /codex:review — the general-purpose neutral review of
- * arbitrary files or folders.
+ * CLI entry point for /codex:diff-review (neutral, non-adversarial, diff-scoped).
+ * Exit 0 on success, 2 on auth failure, 3 on no git repo, 4 on network.
  *
- * Exit codes: 0 success, 2 auth failure, 4 network/runtime, 5 no paths given,
- * 6 paths resolved to no reviewable content.
- *
- * For diff-scoped review, see cli-diff-review.ts (/codex:diff-review).
+ * For neutral review of arbitrary files/folders, see cli-review.ts (the
+ * general-purpose /codex:review command).
  *
  * Background mode: spawns self as a detached child (CODEX_BRIDGE_JOB_ID in
  * env), which writes its result to the results directory on completion.
@@ -16,41 +14,27 @@ import { fileURLToPath } from "node:url";
 
 import { program } from "commander";
 
-import { runGeneralReview } from "./adversarialEngine.js";
+import { runDiffReview } from "./adversarialEngine.js";
 import { spawnDetached, writeJobResult } from "../concurrency/jobManager.js";
 import { getLogger } from "../util/log.js";
 
-const log = getLogger("cli-review");
+const log = getLogger("cli-diff-review");
 
 program
-  .name("codex-bridge-review")
-  .description("Neutral review of arbitrary files/folders via Codex")
+  .name("codex-bridge-diff-review")
+  .description("Neutral code review of a git diff via Codex")
   .option("--effort <level>", "low | medium | high", "medium")
-  .option("--question <text>", "user question or focus area")
   .option("--background", "force background execution")
   .option("--wait", "force synchronous execution")
-  .argument("[paths...]", "one or more files or folders to review")
+  .argument("[git-ref]", "optional git ref or refspec")
   .parse();
 
-const opts = program.opts<{
-  effort: "low" | "medium" | "high";
-  question?: string;
-  background?: boolean;
-  wait?: boolean;
-}>();
-const paths = program.args;
+const opts = program.opts<{ effort: "low" | "medium" | "high"; background?: boolean; wait?: boolean }>();
+const [gitRef] = program.args;
 
 const inheritedJobId = process.env["CODEX_BRIDGE_JOB_ID"];
 
 async function main(): Promise<void> {
-  if (paths.length === 0) {
-    console.error(
-      "no paths given. Use `/codex:review <path...>` to review files or folders. " +
-        "For diff review, use `/codex:diff-review`.",
-    );
-    process.exit(5);
-  }
-
   if (opts.background && !inheritedJobId) {
     const jobId = randomUUID();
     const selfPath = fileURLToPath(import.meta.url);
@@ -62,12 +46,9 @@ async function main(): Promise<void> {
   }
 
   try {
-    const result = await runGeneralReview(paths, {
-      effort: opts.effort,
-      ...(opts.question ? { question: opts.question } : {}),
-    });
+    const result = await runDiffReview(gitRef, { effort: opts.effort });
     if (inheritedJobId) {
-      writeJobResult(inheritedJobId, "codex:review", result);
+      writeJobResult(inheritedJobId, "codex:diff-review", result);
     } else {
       console.log(result);
     }
@@ -75,7 +56,7 @@ async function main(): Promise<void> {
     if (inheritedJobId) {
       writeJobResult(
         inheritedJobId,
-        "codex:review",
+        "codex:diff-review",
         undefined,
         err instanceof Error ? err.message : String(err),
       );
@@ -86,10 +67,10 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
   const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes("no reviewable files found")) {
-    console.error(msg);
-    process.exit(6);
+  if (msg.includes("no git repo") || msg.includes("git_state")) {
+    console.error(`No git repo: ${msg}`);
+    process.exit(3);
   }
-  console.error(`Review failed: ${msg}`);
+  console.error(`Diff review failed: ${msg}`);
   process.exit(4);
 });

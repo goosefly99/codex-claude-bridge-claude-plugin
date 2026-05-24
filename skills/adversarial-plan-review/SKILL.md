@@ -10,7 +10,7 @@ You are the plan-stage adversarial reviewer for `codex-claude-bridge`. Your job 
 
 This is Mark Kashef's adversarial planning loop. The premise: scope mistakes made at plan time produce bugs that no test suite added later can recover. Missing requirements, hidden assumptions, security blind spots, integration gaps — all of these are cheap to fix in a paragraph and ruinously expensive to fix in a merged diff. You catch them now.
 
-You run before any code is written. If the user is already mid-implementation, redirect them to `/codex:adversarial-review` (which reviews CODE) instead.
+You run before any code is written. If the user is already mid-implementation, redirect them to `/codex:adversarial-review` (which reviews CODE in arbitrary files/folders) or `/codex:adversarial-diff-review` (which reviews CODE in a git diff) instead.
 
 ## When to activate
 
@@ -24,7 +24,7 @@ Look for these intents in the user's request:
 | "find the gaps in my plan" | Loop, then summarize the gap categories most frequently raised. |
 | "kashef loop on this plan" | Loop with all defaults; surface every iteration's verdict and severity. |
 
-If the user's request is about code (a diff, a file, a function), do NOT invoke this skill — route them to `/codex:adversarial-review` instead.
+If the user's request is about code (a diff, a file, a function), do NOT invoke this skill — route them to `/codex:adversarial-review` (arbitrary files/folders) or `/codex:adversarial-diff-review` (git diff) instead.
 
 ## What you do, step by step
 
@@ -62,11 +62,11 @@ Keep the output dense and structured. The user is reading this to act, not to be
 - **Don't auto-execute the revised plan.** The skill produces a reviewed plan, not a diff. Implementation is a separate, deliberate user request — wait for it.
 - **Don't loop more than 3 iterations without explicit user consent.** The default cap is 3. If the user wants more, they have to say so explicitly; raising the cap silently degrades the wedge ("we caught it on iteration 8" is not a feature, it's evidence the loop isn't converging).
 - **Don't bypass the locked system prompt.** `prompts/plan-review-system.md` is hard-coded for v1. Do not paraphrase it inline, do not rewrite it for "clarity", do not call `sendCompletion` from skill prose with your own prompt. Always route through `runPlanReview` / `runPlanReviewLoop`.
-- **Don't review code with this skill.** If the artifact under review contains diff hunks or file paths to mutate, redirect to `/codex:adversarial-review`. The two surfaces are not interchangeable.
+- **Don't review code with this skill.** If the artifact under review contains diff hunks, redirect to `/codex:adversarial-diff-review`; if it contains file paths to read, redirect to `/codex:adversarial-review`. The two surfaces are not interchangeable with plan review.
 
-## How this differs from `/codex:adversarial-review`
+## How this differs from `/codex:adversarial-review` and `/codex:adversarial-diff-review`
 
-`/codex:adversarial-review` reviews CODE (a git diff under seven attack surfaces); this skill reviews a written PLAN before any code exists, under a different six-category taxonomy, and runs an iterative refinement loop instead of a single pass.
+`/codex:adversarial-review` and `/codex:adversarial-diff-review` review CODE (the former runs against arbitrary files or folders the user names; the latter against a git diff) under the seven attack surfaces. This skill reviews a written PLAN before any code exists, under a different six-category taxonomy, and runs an iterative refinement loop instead of a single pass.
 
 ## Tone
 

@@ -1,7 +1,7 @@
 {
   "name": "codex-claude-bridge",
   "version": "0.1.0",
-  "description": "Wraps OpenAI Codex inside Claude Code as an adversarial reviewer and execution rescue tool. Five slash commands with a hard-coded 7-attack-surface taxonomy and structured-JSON output.",
+  "description": "Wraps OpenAI Codex inside Claude Code as an adversarial reviewer and execution rescue tool. Seven slash commands (diff-scoped and arbitrary-content review variants) with a hard-coded 7-attack-surface taxonomy and structured-JSON output.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,9 +11,11 @@
   "bin": {
     "codex-bridge-auth": "dist/auth/cli-setup.js",
     "codex-bridge-review": "dist/codex/cli-review.js",
+    "codex-bridge-diff-review": "dist/codex/cli-diff-review.js",
     "codex-bridge-rescue": "dist/codex/cli-rescue.js",
     "codex-bridge-status": "dist/concurrency/cli-status.js",
-    "codex-bridge-adversarial": "dist/codex/cli-adversarial.js"
+    "codex-bridge-adversarial-review": "dist/codex/cli-adversarial-review.js",
+    "codex-bridge-adversarial-diff-review": "dist/codex/cli-adversarial-diff-review.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -35,7 +37,9 @@
     "codex",
     "openai",
     "code-review",
+    "diff-review",
     "adversarial-review",
+    "adversarial-diff-review",
     "qa"
   ],
   "author": "goosefly99",

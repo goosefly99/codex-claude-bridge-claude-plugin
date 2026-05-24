@@ -20,6 +20,8 @@ coverage/
 !.env.example
 *.local
 *.local.*
+GITHUB_PAT.txt
+github_pat.txt
 
 # OAuth token cache (NEVER commit; written by tokenStore at runtime)
 auth.json
@@ -56,6 +58,9 @@ desktop.ini
 
 # Vitest
 .vitest/
+
+# agent-code-validation session data (per-machine; contains session key)
+.acv/
 
 # Job registry (per-machine, per-workspace)
 jobs/

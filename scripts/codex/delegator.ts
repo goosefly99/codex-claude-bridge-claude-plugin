@@ -34,7 +34,7 @@ import { enqueue } from "../concurrency/jobManager.js";
 import type { JobDescriptor } from "../concurrency/jobManager.js";
 
 import { sendCompletion, type ChatMessage } from "./transport.js";
-import { runAdversarialReview, type AdversarialOutput } from "./adversarialEngine.js";
+import { runAdversarialDiffReview, type AdversarialOutput } from "./adversarialEngine.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const PLUGIN_ROOT = resolve(dirname(__filename), "..", "..");
@@ -353,7 +353,7 @@ export async function pattern(
           label: `P3 iter ${i + 1}`,
         });
         iterations.push(result);
-        lastAudit = await runAdversarialReview(undefined, { effort: "high" });
+        lastAudit = await runAdversarialDiffReview(undefined, { effort: "high" });
         if (lastAudit.verdict === gate || lastAudit.verdict === "pass") break;
         currentPlan = repromptFromAudit(p.plan, lastAudit);
       }
@@ -395,7 +395,7 @@ export async function pattern(
           reason = "error";
           break;
         }
-        const audit = await runAdversarialReview(undefined, {
+        const audit = await runAdversarialDiffReview(undefined, {
           effort: "high",
           steering: p.evaluate_prompt,
         });

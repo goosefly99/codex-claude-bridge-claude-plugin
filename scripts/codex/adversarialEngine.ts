@@ -1,6 +1,11 @@
 /**
- * Adversarial review engine — the 6-phase orchestrator that powers
- * /codex:adversarial-review.
+ * Adversarial review engine — the orchestrator that powers the four codex
+ * review commands: /codex:diff-review, /codex:adversarial-diff-review,
+ * /codex:review, and /codex:adversarial-review. The diff variants use the
+ * 6-phase pipeline (parseArguments → resolveTarget → collectContext →
+ * buildPrompt → dispatchAndValidate). The general variants share the locked
+ * system prompts and JSON output schema but assemble their input via
+ * scripts/codex/fsContext.collectFilesystemContext instead of a git diff.
  *
  * Hard invariants:
  *   - The 7 attack surfaces are loaded VERBATIM from
@@ -26,6 +31,7 @@ import { toUnixPath } from "../util/paths.js";
 import { prepareReviewBase, cleanupReviewBase } from "../git/greenfield.js";
 
 import { classifyDiff } from "./sizeClassifier.js";
+import { collectFilesystemContext, type CollectedContext } from "./fsContext.js";
 import { sendCompletion, type ChatMessage } from "./transport.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -268,7 +274,13 @@ function recoverPartial(text: string): AdversarialOutput {
   };
 }
 
-export async function runAdversarialReview(
+/**
+ * Run the adversarial review against the working diff (or an explicit ref/refspec).
+ *
+ * This is the engine for `/codex:adversarial-diff-review`. For arbitrary
+ * filesystem content (folder, single file) use `runGeneralAdversarialReview`.
+ */
+export async function runAdversarialDiffReview(
   target?: string,
   opts?: AdversarialOptions,
 ): Promise<AdversarialOutput> {
@@ -289,10 +301,11 @@ export async function runAdversarialReview(
 }
 
 /**
- * Run a neutral (non-adversarial) code review using `prompts/review-system.md`.
- * Returns prose rather than structured JSON.
+ * Run a neutral (non-adversarial) code review against the working diff (or an
+ * explicit ref/refspec) using `prompts/review-system.md`. Returns prose rather
+ * than structured JSON. Engine for `/codex:diff-review`.
  */
-export async function runNeutralReview(
+export async function runDiffReview(
   target?: string,
   opts?: Pick<AdversarialOptions, "effort" | "background" | "wait" | "steering">,
 ): Promise<string> {
@@ -325,4 +338,157 @@ export async function runNeutralReview(
       });
     }
   }
+}
+
+export interface GeneralReviewOptions {
+  effort?: "low" | "medium" | "high";
+  background?: boolean;
+  wait?: boolean;
+  /** User-supplied question or focus area, included in the user prompt preamble. */
+  question?: string;
+  /** Adversarial-only: narrow reasoning to a single attack surface. */
+  focus?: AttackSurface;
+  /** Override the resolution root passed to collectFilesystemContext (tests). */
+  root?: string;
+}
+
+function renderFilesystemContext(ctx: CollectedContext): string {
+  const lines: string[] = [];
+  lines.push(`Filesystem content under review (${ctx.files.length} files, ~${ctx.totalTokens} tokens):`);
+  for (const f of ctx.files) {
+    lines.push("");
+    lines.push(`### ${f.relPath}`);
+    lines.push("```");
+    lines.push(f.content);
+    lines.push("```");
+  }
+  if (ctx.truncated || ctx.skipped.length > 0) {
+    lines.push("");
+    lines.push("The following paths were skipped or truncated:");
+    for (const s of ctx.skipped) lines.push(`- ${s}`);
+    if (ctx.truncated) {
+      lines.push("");
+      lines.push(
+        "The token budget was exhausted. Findings should reflect that the model only saw the files listed above.",
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
+const GENERAL_REVIEW_FRAMING =
+  "You are reviewing arbitrary filesystem content (files and/or folders the user pointed at) — NOT a git diff. There is no base/head pair. Treat the supplied content as the full body of code or text to consider.";
+
+/**
+ * Run a neutral review against arbitrary files and folders. Engine for
+ * `/codex:review` when called with one or more `<path>` arguments.
+ */
+export async function runGeneralReview(
+  paths: string[],
+  opts: GeneralReviewOptions = {},
+): Promise<string> {
+  if (paths.length === 0) {
+    throw new Error(
+      "runGeneralReview requires at least one path; for diff review use runDiffReview / /codex:diff-review",
+    );
+  }
+  const effort = opts.effort ?? "medium";
+  const fsOpts: Parameters<typeof collectFilesystemContext>[1] = opts.root ? { root: opts.root } : {};
+  const ctx = await collectFilesystemContext(paths, fsOpts);
+  if (ctx.files.length === 0) {
+    throw new Error(
+      `no reviewable files found under: ${paths.join(", ")} (all entries were ignored, binary, or empty)`,
+    );
+  }
+  const systemPath = resolve(PLUGIN_ROOT, "prompts", "review-system.md");
+  const system = readFileSync(systemPath, "utf-8");
+  const lines: string[] = [GENERAL_REVIEW_FRAMING, ""];
+  if (opts.question) {
+    lines.push("User's question / focus:");
+    lines.push(opts.question);
+    lines.push("");
+  }
+  lines.push(renderFilesystemContext(ctx));
+  const messages: ChatMessage[] = [
+    { role: "system", content: system },
+    { role: "user", content: lines.join("\n") },
+  ];
+  log.debug("dispatching general review", {
+    paths: paths.length,
+    files: ctx.files.length,
+    tokens: ctx.totalTokens,
+    truncated: ctx.truncated,
+  });
+  const result = await sendCompletion(messages, { reasoning_effort: effort });
+  return result.message.content;
+}
+
+/**
+ * Run the adversarial 7-attack-surface review against arbitrary files and
+ * folders. Engine for `/codex:adversarial-review` when called with one or more
+ * `<path>` arguments. Loads the same locked `prompts/adversarial-system.md`
+ * and validates output against `schemas/adversarial-output.json`.
+ */
+export async function runGeneralAdversarialReview(
+  paths: string[],
+  opts: GeneralReviewOptions = {},
+): Promise<AdversarialOutput> {
+  if (paths.length === 0) {
+    throw new Error(
+      "runGeneralAdversarialReview requires at least one path; for diff review use runAdversarialDiffReview / /codex:adversarial-diff-review",
+    );
+  }
+  if (opts.focus && !ATTACK_SURFACES.includes(opts.focus)) {
+    throw new Error(
+      `unknown --focus surface "${opts.focus}". Valid: ${ATTACK_SURFACES.join(", ")}`,
+    );
+  }
+  const fsOpts: Parameters<typeof collectFilesystemContext>[1] = opts.root ? { root: opts.root } : {};
+  const ctx = await collectFilesystemContext(paths, fsOpts);
+  if (ctx.files.length === 0) {
+    throw new Error(
+      `no reviewable files found under: ${paths.join(", ")} (all entries were ignored, binary, or empty)`,
+    );
+  }
+
+  const system = loadSystemPrompt();
+  const lines: string[] = [GENERAL_REVIEW_FRAMING, ""];
+  if (opts.question) {
+    lines.push("Steering directive from the user:");
+    lines.push(opts.question);
+    lines.push("");
+  }
+  if (opts.focus) {
+    lines.push(
+      `Narrow your reasoning to the "${opts.focus}" attack surface for this review. Other surfaces may still produce findings, but spend the bulk of your reasoning here.`,
+    );
+    lines.push("");
+  }
+  lines.push(renderFilesystemContext(ctx));
+
+  const messages: ChatMessage[] = [
+    { role: "system", content: system },
+    { role: "user", content: lines.join("\n") },
+  ];
+  const completionOpts: Parameters<typeof sendCompletion>[1] = {
+    response_format: { type: "json_object" },
+  };
+  if (opts.effort) completionOpts.reasoning_effort = opts.effort;
+  const completion = await sendCompletion(messages, completionOpts);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(completion.message.content);
+  } catch (err) {
+    log.warn("model returned non-JSON; attempting tolerant recovery", { err: String(err) });
+    parsed = recoverPartial(completion.message.content);
+  }
+
+  const ok = getValidator()(parsed);
+  if (!ok) {
+    log.warn("model output failed schema validation; surfacing best-effort", {
+      errors: validatorErrors,
+    });
+  }
+  return parsed as AdversarialOutput;
 }

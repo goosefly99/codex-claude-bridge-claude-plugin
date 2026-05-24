@@ -33,8 +33,17 @@ The taxonomy lives verbatim in `prompts/adversarial-system.md`. The names are:
 
 Do not "lift" the slash-command depth-1 FIFO; do not "tighten" the delegator pathway. The split is deliberate: user-typed commands stay observable and predictable, while agentic delegation can run N parallel Codex agents up to `config.delegator_max_concurrent` (default 4). If you want to relax the slash-command invariant, do it in v2 with a separate RFC.
 
-### 4. Command names match the OpenAI reference plugin verbatim.
-`/codex:setup`, `/codex:review`, `/codex:adversarial-review`, `/codex:rescue`, `/codex:status`. No synonyms, no rebranding. Users are switching between two plugins; muscle memory is the feature.
+### 4. Command names mirror the OpenAI reference plugin, with the v0.2.0 rename for clarity.
+
+Current surface (v0.2.0+):
+
+- `/codex:setup`, `/codex:rescue`, `/codex:status` — unchanged from the reference plugin; muscle memory preserved.
+- `/codex:diff-review` and `/codex:adversarial-diff-review` — diff-scoped review (neutral and adversarial).
+- `/codex:review` and `/codex:adversarial-review` — general-purpose review of arbitrary files or folders (neutral and adversarial).
+
+The original `/codex:review` and `/codex:adversarial-review` names were diff-only in implementation. That was actively misleading: users wanted Codex to look at a folder unrelated to the working diff and either got a review of the wrong files or had to give up. The v0.2.0 rename trades a small muscle-memory break for honest names that match what each command does. We do not ship alias commands — the rename is hard, with explicit error messages from the new general commands pointing back at the diff variants if a user invoked them with no path.
+
+Once the rename has shipped, the `/codex:` namespace is closed again: no new synonyms, no rebranding. Future review variants (if any) get an explicit RFC.
 
 The `implement-with-codex` skill is NOT a slash command — it is an agentic skill (lives in `skills/implement-with-codex/SKILL.md`) that Claude invokes when the user describes a delegation intent. It does not consume the `/codex:` namespace.
 
@@ -59,7 +68,7 @@ Routing rules:
 
 What the skill must NEVER do:
 
-- Generate the 7 attack-surface taxonomy on the fly. (Same invariant as everywhere else.) If a delegation includes an adversarial-review step, it must invoke `adversarialEngine.runAdversarialReview()`, which loads the locked prompt.
+- Generate the 7 attack-surface taxonomy on the fly. (Same invariant as everywhere else.) If a delegation includes an adversarial-review step, it must invoke `adversarialEngine.runAdversarialDiffReview()` (for diffs) or `adversarialEngine.runGeneralAdversarialReview()` (for arbitrary paths), both of which load the same locked prompt.
 - Skip the path-normalization layer. All file writes routed through the delegator pass through `scripts/util/paths.ts`.
 - Mutate the slash-command job registry. The dual-registry split is non-negotiable.
 - Auto-commit. The skill always leaves the diff in the working tree and tells the user to review before committing.
@@ -68,7 +77,7 @@ What the skill must NEVER do:
 
 Four additional skills derived from `concepts/codex_methods/`. Each is independent, narrow, and triggered by phrase-matching against its SKILL.md description. None of them route through `delegator.ts` — they are orthogonal to the implement-with-codex pathway. Design rules per skill:
 
-- **`adversarial-plan-review`** is the plan-stage analog of `/codex:adversarial-review`. It uses `scripts/codex/planReviewer.ts` against `prompts/plan-review-system.md` (LOCKED) with the 6-category taxonomy (missing-requirement, hidden-assumption, scope-creep, security-blind-spot, integration-gap, observability-gap). The 6 categories are enforced by an anti-drift test in `tests/plan-reviewer.test.ts` — same protection model as the 7 attack surfaces. Output validates against `schemas/plan-review-output.json`. Loop terminates on `verdict_acceptable`, `severity_converged` (5-point tolerance), `unfit_short_circuit`, or `max_iterations`.
+- **`adversarial-plan-review`** is the plan-stage analog of `/codex:adversarial-review` and `/codex:adversarial-diff-review`. It uses `scripts/codex/planReviewer.ts` against `prompts/plan-review-system.md` (LOCKED) with the 6-category taxonomy (missing-requirement, hidden-assumption, scope-creep, security-blind-spot, integration-gap, observability-gap). The 6 categories are enforced by an anti-drift test in `tests/plan-reviewer.test.ts` — same protection model as the 7 attack surfaces. Output validates against `schemas/plan-review-output.json`. Loop terminates on `verdict_acceptable`, `severity_converged` (5-point tolerance), `unfit_short_circuit`, or `max_iterations`.
 
 - **`browser-verify`** is READ-ONLY. It never writes code. `scripts/browser/verify.ts.detectBackend()` probes for Playwright MCP > Codex Chrome plugin > `@browseruse` > none-with-install-instructions. The skill itself uses whichever backend the user has — the plugin doesn't ship a browser driver. The five recipes live in `skills/browser-verify/playwright-recipes.md` and are referenced by name from the skill body.
 
@@ -92,7 +101,7 @@ What this suite must NEVER do:
   Neither test may be disabled.
 - **Skill-trigger shape tests** verify the canonical activation phrases are present verbatim in each SKILL.md (`skill-trigger-shape.test.ts`, `browser-verify-trigger-shape.test.ts`, and the trigger-phrase blocks inside `plan-reviewer.test.ts`, `failure-log.test.ts`, `agents-md-sync.test.ts`). These guard against silent regressions when a skill description is "polished".
 - **Windows path tests** must run on a Windows CI runner from day one. OneDrive-redirected user homes, paths with spaces, drive-letter case differences, and UNC paths are all covered by fixtures.
-- **Closed-loop integration test** (Phase 3) verifies that `/codex:adversarial-review` JSON output round-trips through Claude plan mode without truncation or paraphrase. If this regresses, P2/P3/P7 patterns degrade silently.
+- **Closed-loop integration test** (Phase 3) verifies that `/codex:adversarial-diff-review` JSON output round-trips through Claude plan mode without truncation or paraphrase. The same test covers `/codex:adversarial-review` since both share the schema and engine path; only the input shape differs. If this regresses, P2/P3/P7 patterns degrade silently.
 
 ## File map
 
@@ -125,7 +134,7 @@ Each directory has a single component owner. Cross-directory edits should be spl
 ## What to never change without explicit human approval
 
 - The 7 attack surface names (anywhere they appear).
-- The five command names in `plugin.json` and `commands/*.md`.
+- The seven command names in `plugin.json` and `commands/*.md` (`/codex:setup`, `/codex:status`, `/codex:rescue`, `/codex:diff-review`, `/codex:adversarial-diff-review`, `/codex:review`, `/codex:adversarial-review`).
 - The OAuth-only auth model (no API-key fallback in v1).
 - Slash-command depth-1 FIFO in the `commands` registry of `scripts/concurrency/jobManager.ts`. (The `delegator` registry is allowed to run multiple jobs; do not unify the two.)
 - The structured-JSON output contract in `schemas/adversarial-output.json` and `schemas/delegator-output.json` (additive changes are okay; removing or renaming fields is not).

@@ -23,7 +23,9 @@ async function main(): Promise<void> {
   log.info("probing endpoint with API key");
   await authorize();
 
-  console.log(`OK — OPENAI_API_KEY validated; endpoint reachable. Try /codex:review.`);
+  console.log(
+    `OK — OPENAI_API_KEY validated; endpoint reachable. Try /codex:diff-review (for a git diff) or /codex:review <path...> (for arbitrary files).`,
+  );
 }
 
 main().catch((err: unknown) => {

@@ -81,7 +81,7 @@ describe("readUndeliveredResults / markResultDelivered", () => {
     process.env["CLAUDE_PLUGIN_DATA"] = data;
 
     const jobId = "result-test-" + Date.now();
-    writeJobResult(jobId, "codex:adversarial-review", { verdict: "pass" });
+    writeJobResult(jobId, "codex:adversarial-diff-review", { verdict: "pass" });
 
     const first = readUndeliveredResults();
     expect(first.length).toBe(1);

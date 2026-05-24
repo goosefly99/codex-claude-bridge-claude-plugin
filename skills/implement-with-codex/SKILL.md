@@ -17,7 +17,7 @@ Look for these intents in the user's request:
 | User says | Pattern | What you do |
 | --- | --- | --- |
 | "use codex to implement X" | P1 — plan → execute | Produce a plan, hand it to one Codex agent, return the diff. |
-| "have codex implement this, then adversarial-review it" | P3 — closed-loop | Hand to one Codex agent; after it returns, immediately call `runAdversarialReview()` on the new diff; if findings exist, hand them back to Codex for fixes. |
+| "have codex implement this, then adversarial-review it" | P3 — closed-loop | Hand to one Codex agent; after it returns, immediately call `runAdversarialDiffReview()` on the new diff; if findings exist, hand them back to Codex for fixes. |
 | "run both Claude and codex on this, compare" | P4 — A/B split | Spawn two parallel agents (yourself for Claude, one Codex via delegator) against the same plan; gather both results; render a side-by-side. |
 | "split this — codex does the data layer, Claude does the UI" | P5 — workload split | Spawn one Codex agent on the data layer; you do the UI yourself; deliver both as a single diff. |
 | "ralph loop this with codex as reviewer" | P7 — generator/evaluator | You generate; each iteration calls Codex via the delegator with a review prompt; stop when Codex returns a `pass` verdict or iteration cap is hit. |
@@ -33,7 +33,7 @@ If the user's request doesn't match any of these patterns, do not invoke this sk
    - Single agent: `delegate(plan, opts)`.
    - Parallel agents: `delegateParallel(tasks, opts)`.
    - Pattern helpers: `pattern("P1" | "P3" | "P4" | "P5" | "P7", input)`.
-5. **Wait for results.** The delegator returns a structured `DelegationResult` per agent: status, files_changed, summary, diff_stat. For P3, chain into `runAdversarialReview()` on the diff after each delegation completes.
+5. **Wait for results.** The delegator returns a structured `DelegationResult` per agent: status, files_changed, summary, diff_stat. For P3, chain into `runAdversarialDiffReview()` on the diff after each delegation completes.
 6. **Surface the outcome.** Render a concise summary: which agent did what, files changed, line counts, any errors. Show the user the diff (or a stat). Never auto-commit.
 7. **Cleanup.** If you used worktrees, the delegator handles cleanup unless the user asked to keep them for inspection.
 
@@ -41,7 +41,7 @@ If the user's request doesn't match any of these patterns, do not invoke this sk
 
 - **Don't call transport.ts directly.** Always go through the delegator. The delegator is where path normalization, redacted logging, confirmation gates, and the dual-registry concurrency live.
 - **Don't auto-commit.** Leave the working tree in a reviewable state. Tell the user what to run (`git diff`, `git status`).
-- **Don't write the 7-attack-surface taxonomy from memory.** For P3 closed-loop, call `runAdversarialReview()` — it loads the locked prompt. Inventing the taxonomy on the fly defeats the differentiator.
+- **Don't write the 7-attack-surface taxonomy from memory.** For P3 closed-loop, call `runAdversarialDiffReview()` — it loads the locked prompt. Inventing the taxonomy on the fly defeats the differentiator.
 - **Don't skip the path-normalization layer.** Every file path in your output goes through `scripts/util/paths.ts.toUnixPath` before being shown to the user.
 - **Don't mutate the slash-command job registry.** You write to the `delegator` registry only. `/codex:status` will surface both; do not unify them.
 - **Don't suppress the first-write confirmation gate.** Each Codex sub-job that mutates files gets one confirmation prompt. The user can choose `confirm: false` explicitly; you do not silently bypass.

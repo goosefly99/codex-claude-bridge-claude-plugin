@@ -46,7 +46,7 @@ The patterns build on a core empirical observation: Claude and Codex agree on ro
 **When to use:** You want Codex to implement *and* run the adversarial review on its own output, iterating until it passes (or until you stop it at 3 iterations). Best for:
 - Security-sensitive changes (auth, permissioning, data pipelines).
 - API changes that could silently break downstream consumers.
-- Any change where you'd normally run `/codex:adversarial-review` anyway.
+- Any change where you'd normally run `/codex:adversarial-diff-review` (for diffs) or `/codex:adversarial-review` (for arbitrary content) anyway.
 
 **Example prompt:**
 > "Have Codex implement the OAuth refresh flow, then adversarial-review it. Loop until it says it's safe to ship."

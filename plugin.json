@@ -1,7 +1,7 @@
 {
   "name": "codex-claude-bridge",
   "version": "0.1.0",
-  "description": "Wraps OpenAI Codex (GPT-5.4-class) inside Claude Code as an adversarial reviewer, execution rescue tool, parallel delegation surface, and Codex-methods skill suite. Five slash commands (/codex:setup, /codex:review, /codex:adversarial-review, /codex:rescue, /codex:status) plus five agentic skills: implement-with-codex (parallel delegation), adversarial-plan-review (Kashef planning loop with 6 locked categories), browser-verify (Playwright MCP / @browseruse / Codex Chrome plugin verification), failure-as-knowledge (deduped AGENTS.md error log), and agents-md-sync (lean AGENTS.md ↔ CLAUDE.md sync). Hard-coded 7-attack-surface taxonomy and structured-JSON output for closed-loop plan-mode integration.",
+  "description": "Wraps OpenAI Codex (GPT-5.4-class) inside Claude Code as an adversarial reviewer, execution rescue tool, parallel delegation surface, and Codex-methods skill suite. Seven slash commands — /codex:setup, /codex:status, /codex:rescue, and two review pairs split by scope: /codex:diff-review and /codex:adversarial-diff-review run against a git diff; /codex:review and /codex:adversarial-review run against arbitrary files or folders. Plus five agentic skills: implement-with-codex (parallel delegation), adversarial-plan-review (Kashef planning loop with 6 locked categories), browser-verify (Playwright MCP / @browseruse / Codex Chrome plugin verification), failure-as-knowledge (deduped AGENTS.md error log), and agents-md-sync (lean AGENTS.md ↔ CLAUDE.md sync). Hard-coded 7-attack-surface taxonomy and structured-JSON output for closed-loop plan-mode integration.",
   "author": {
     "name": "goosefly99"
   },
@@ -12,7 +12,9 @@
     "codex",
     "openai",
     "adversarial-review",
+    "adversarial-diff-review",
     "code-review",
+    "diff-review",
     "qa",
     "claude-code-plugin",
     "delegation",

@@ -40,7 +40,7 @@ await delegate(plan, { pattern: "P1" });
 
 **Plan template:** Same as P1, plus:
 ```
-Audit gate: stop when /codex:adversarial-review returns `verdict: "pass"` OR after 3 iterations.
+Audit gate: stop when /codex:adversarial-diff-review returns `verdict: "pass"` OR after 3 iterations.
 ```
 
 **Invocation:**

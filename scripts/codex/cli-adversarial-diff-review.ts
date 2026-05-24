@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 /**
- * CLI entry point for /codex:adversarial-review.
+ * CLI entry point for /codex:adversarial-diff-review (hostile, diff-scoped).
  * Exit 0 on success, 2 on auth failure, 3 on no git repo, 4 on network.
+ *
+ * For adversarial review of arbitrary files/folders, see
+ * cli-adversarial-review.ts (the general-purpose /codex:adversarial-review
+ * command).
  *
  * Background mode: spawns self as a detached child (CODEX_BRIDGE_JOB_ID in
  * env), which writes its result to the results directory on completion.
@@ -11,15 +15,15 @@ import { fileURLToPath } from "node:url";
 
 import { program } from "commander";
 
-import { runAdversarialReview, type AttackSurface } from "./adversarialEngine.js";
+import { runAdversarialDiffReview, type AttackSurface } from "./adversarialEngine.js";
 import { spawnDetached, writeJobResult } from "../concurrency/jobManager.js";
 import { getLogger } from "../util/log.js";
 
-const log = getLogger("cli-adversarial");
+const log = getLogger("cli-adversarial-diff-review");
 
 program
-  .name("codex-bridge-adversarial")
-  .description("Adversarial code review across 7 hard-coded attack surfaces")
+  .name("codex-bridge-adversarial-diff-review")
+  .description("Adversarial code review of a git diff across 7 hard-coded attack surfaces")
   .option("--effort <level>", "low | medium | high", "high")
   .option("--focus <surface>", "narrow to a single attack surface")
   .option("--background", "force background execution")
@@ -49,12 +53,12 @@ async function main(): Promise<void> {
   }
 
   try {
-    const result = await runAdversarialReview(gitRef, {
+    const result = await runAdversarialDiffReview(gitRef, {
       effort: opts.effort,
       ...(opts.focus ? { focus: opts.focus as AttackSurface } : {}),
     });
     if (inheritedJobId) {
-      writeJobResult(inheritedJobId, "codex:adversarial-review", result);
+      writeJobResult(inheritedJobId, "codex:adversarial-diff-review", result);
     } else {
       console.log(JSON.stringify(result, null, 2));
     }
@@ -62,7 +66,7 @@ async function main(): Promise<void> {
     if (inheritedJobId) {
       writeJobResult(
         inheritedJobId,
-        "codex:adversarial-review",
+        "codex:adversarial-diff-review",
         undefined,
         err instanceof Error ? err.message : String(err),
       );
@@ -77,6 +81,6 @@ main().catch((err: unknown) => {
     console.error(`No git repo: ${msg}`);
     process.exit(3);
   }
-  console.error(`Adversarial review failed: ${msg}`);
+  console.error(`Adversarial diff review failed: ${msg}`);
   process.exit(4);
 });

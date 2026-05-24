@@ -1,11 +1,13 @@
 /**
  * Greenfield git handler — edge-case support for repos with no commits.
  *
- * When /codex:adversarial-review or /codex:review runs on a freshly-`git
- * init`-ed workspace, there is no diff target. This module transparently
- * creates a throwaway `codex-review-base` branch with an empty initial commit
- * so a diff can be computed against it. After the review runs, the throwaway
- * branch is deleted.
+ * When /codex:diff-review or /codex:adversarial-diff-review runs on a
+ * freshly-`git init`-ed workspace, there is no diff target. This module
+ * transparently creates a throwaway `codex-review-base` branch with an empty
+ * initial commit so a diff can be computed against it. After the review runs,
+ * the throwaway branch is deleted. The general-purpose /codex:review and
+ * /codex:adversarial-review commands do not need this — they walk paths
+ * directly via scripts/codex/fsContext.ts.
  *
  * Hard rules:
  *   - Never auto-init a non-git directory. If the user has no repo, exit code 3

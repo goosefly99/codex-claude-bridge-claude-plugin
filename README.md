@@ -6,17 +6,21 @@ A Claude Code marketplace plugin that wraps **OpenAI Codex** (gpt-5.5) as an adv
 
 ## What it does
 
-`codex-claude-bridge` adds five slash commands to Claude Code:
+`codex-claude-bridge` adds seven slash commands to Claude Code:
 
 | Command | Purpose |
 | --- | --- |
 | `/codex:setup` | Validate your `OPENAI_API_KEY` and verify the endpoint is reachable. |
-| `/codex:review` | Neutral code review of the current diff. |
-| `/codex:adversarial-review` | Hostile review across 7 hard-coded attack surfaces. Returns structured JSON. |
+| `/codex:diff-review` | Neutral code review of a git diff. |
+| `/codex:adversarial-diff-review` | Hostile review of a git diff across 7 hard-coded attack surfaces. Returns structured JSON. |
+| `/codex:review` | Neutral review of arbitrary files or folders (not a diff). |
+| `/codex:adversarial-review` | Hostile review of arbitrary files or folders across the same 7 attack surfaces. Returns structured JSON. |
 | `/codex:rescue` | Hand a Claude-authored plan to Codex for execution. |
 | `/codex:status` | Inspect any background Codex job. |
 
-The flagship is `/codex:adversarial-review`. It runs a 6-phase review process and forces Codex to reason through each of seven attack surfaces in a fixed order, emitting structured JSON that Claude plan mode can re-read for closed-loop fix implementation.
+> **Renamed in v0.2.0.** The previous `/codex:review` and `/codex:adversarial-review` were hard-wired to a git diff and produced confusing output when the user's question was about an unrelated folder. They have been renamed to `/codex:diff-review` and `/codex:adversarial-diff-review`. The `/codex:review` and `/codex:adversarial-review` names now belong to general-purpose commands that review arbitrary files or folders.
+
+The flagship is `/codex:adversarial-diff-review` (for diffs) and its sibling `/codex:adversarial-review` (for arbitrary content). Both run the same 6-phase review process and force Codex to reason through each of seven attack surfaces in a fixed order, emitting structured JSON that Claude plan mode can re-read for closed-loop fix implementation.
 
 ## Why it exists
 
@@ -51,20 +55,36 @@ Validates `OPENAI_API_KEY` and probes the Codex endpoint. Run once per machine, 
 /codex:setup
 ```
 
-### `/codex:review [--effort low|medium|high] [--background|--wait] [<git-ref>]`
-Neutral review of the current diff (uncommitted changes by default; an explicit ref overrides). Auto-classifies based on diff size: small diffs run synchronously, large ones prompt for `--background` or `--wait`.
+### `/codex:diff-review [--effort low|medium|high] [--background|--wait] [<git-ref>]`
+Neutral review of a git diff (uncommitted changes by default; an explicit ref overrides). Auto-classifies based on diff size: small diffs run synchronously, large ones prompt for `--background` or `--wait`.
 
 ```text
-/codex:review --effort high
-/codex:review main..HEAD --background
+/codex:diff-review --effort high
+/codex:diff-review main..HEAD --background
 ```
 
-### `/codex:adversarial-review [--effort ...] [--focus <surface>] [--background|--wait] [<git-ref>]`
-Hostile review across all 7 attack surfaces by default, or narrowed via `--focus`. Output is JSON validated against `schemas/adversarial-output.json`: verdict, severity buckets, file:line refs, fix hints, next steps, items safe to ship.
+### `/codex:adversarial-diff-review [--effort ...] [--focus <surface>] [--background|--wait] [<git-ref>]`
+Hostile review of a git diff across all 7 attack surfaces by default, or narrowed via `--focus`. Output is JSON validated against `schemas/adversarial-output.json`: verdict, severity buckets, file:line refs, fix hints, next steps, items safe to ship.
 
 ```text
-/codex:adversarial-review --effort high
-/codex:adversarial-review --focus "Race conditions"
+/codex:adversarial-diff-review --effort high
+/codex:adversarial-diff-review --focus "Race conditions"
+```
+
+### `/codex:review [--effort ...] [--question <text>] [--background|--wait] <path...>`
+Neutral review of arbitrary files or folders. Walks each path (respecting `.gitignore`), skips binaries, caps at the configured token budget, and includes the user's optional `--question` as a steering directive.
+
+```text
+/codex:review docker/jupyterhub/
+/codex:review src/api/ --question "is the retry logic correct under partial network failures?"
+```
+
+### `/codex:adversarial-review [--effort ...] [--focus <surface>] [--question <text>] [--background|--wait] <path...>`
+Hostile review of arbitrary files or folders using the same 7-attack-surface taxonomy as `/codex:adversarial-diff-review`. Same JSON output shape; only the input is different.
+
+```text
+/codex:adversarial-review docker/jupyterhub/
+/codex:adversarial-review src/auth/ --focus "Authentication"
 ```
 
 ### `/codex:rescue <plan-or-task>`
@@ -115,7 +135,7 @@ The skill never auto-commits. It produces a clean diff in your working tree, pri
 
 Run Codex against a written plan **before** any code exists. The skill walks Codex through six categories in order — missing-requirement, hidden-assumption, scope-creep, security-blind-spot, integration-gap, observability-gap — and returns a structured verdict (`acceptable` / `needs-revision` / `unfit`) with severity, gaps, mitigations, and revision hints.
 
-If the verdict isn't `acceptable`, the skill produces a revised plan and re-reviews, up to 3 iterations or until severity stops decreasing. Distinct from `/codex:adversarial-review`, which runs on code; this runs on the plan.
+If the verdict isn't `acceptable`, the skill produces a revised plan and re-reviews, up to 3 iterations or until severity stops decreasing. Distinct from `/codex:adversarial-review` and `/codex:adversarial-diff-review`, which run on code; this runs on the plan.
 
 ```text
 You: "review my plan: <pastes plan>"
@@ -168,7 +188,8 @@ Edit `$CLAUDE_PLUGIN_DATA/codex-bridge/config.json` to override defaults. Schema
 ## Limitations (v1)
 
 - **Slash commands run single-job per workspace.** Concurrent slash-command jobs are queued FIFO at depth 1; further enqueues are rejected with a pointer to `/codex:status`. The `implement-with-codex` skill has its own registry and may run multiple Codex agents in parallel (default cap 4).
-- **Git-only.** Non-git workspaces are out of scope. The greenfield handler creates a throwaway `codex-review-base` branch when no commits exist; non-git directories error out with exit code 3.
+- **Diff commands require git.** `/codex:diff-review` and `/codex:adversarial-diff-review` need a git repo. The greenfield handler creates a throwaway `codex-review-base` branch when no commits exist; non-git directories error out with exit code 3. `/codex:review` and `/codex:adversarial-review` work without git — they walk supplied paths directly and fall back to a built-in deny-list when no `.gitignore` is available.
+- **General review reads only inside the cwd.** `/codex:review` and `/codex:adversarial-review` refuse paths that resolve outside the current working directory.
 - **Windows path handling.** The reference plugin shipped with a Windows path bug. We have a dedicated path-normalization module and a regression test suite, but please file an issue if you hit anything unexpected.
 - **No telemetry.** All logs are local. We never phone home.
 

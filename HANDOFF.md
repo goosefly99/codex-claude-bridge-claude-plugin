@@ -92,7 +92,7 @@ codex --version         # Confirm the codex CLI is installed
 # 1. Trigger /codex:setup against a real ChatGPT account
 # 2. Confirm browser opens to the real OpenAI consent screen
 # 3. Confirm callback returns 200 and token is cached
-# 4. Confirm /codex:review on a small diff produces a valid envelope
+# 4. Confirm /codex:diff-review on a small diff produces a valid envelope
 ```
 
 If the probe call fails with `401 invalid_token`, the scopes are wrong. If
@@ -130,11 +130,13 @@ files:
    entry point:
    ```json
    "bin": {
-     "codex-bridge-auth":       "dist/auth/cli.js",
-     "codex-bridge-review":     "dist/codex/cli-review.js",
-     "codex-bridge-rescue":     "dist/codex/cli-rescue.js",
-     "codex-bridge-status":     "dist/concurrency/cli-status.js",
-     "codex-bridge-adversarial":"dist/codex/cli-adversarial.js"
+     "codex-bridge-auth":                     "dist/auth/cli.js",
+     "codex-bridge-review":                   "dist/codex/cli-review.js",
+     "codex-bridge-diff-review":              "dist/codex/cli-diff-review.js",
+     "codex-bridge-rescue":                   "dist/codex/cli-rescue.js",
+     "codex-bridge-status":                   "dist/concurrency/cli-status.js",
+     "codex-bridge-adversarial-review":       "dist/codex/cli-adversarial-review.js",
+     "codex-bridge-adversarial-diff-review":  "dist/codex/cli-adversarial-diff-review.js"
    }
    ```
 2. Create thin CLI wrappers in `scripts/{auth,codex,concurrency}/cli-*.ts`
@@ -171,7 +173,7 @@ After fixing, run a manual end-to-end:
 ```bash
 /codex:setup                          # OAuth flow completes
 /codex:status                         # Shows empty job queue
-/codex:adversarial-review HEAD~1..HEAD --background
+/codex:adversarial-diff-review HEAD~1..HEAD --background
 /codex:status                         # Shows the running job
 ```
 
@@ -335,8 +337,8 @@ found (so CI does not break for contributors without an OpenAI account):
 
 Add ≥ 2 GIFs to `README.md`:
 1. `/codex:setup` OAuth flow end-to-end.
-2. `/codex:adversarial-review` producing a finding and Claude plan mode
-   re-reading it.
+2. `/codex:adversarial-diff-review` (or `/codex:adversarial-review` on a
+   folder) producing a finding and Claude plan mode re-reading it.
 Store under `docs/media/`. Use `peek` or `kap` to record. Compress with
 `gifsicle -O3` so each is under 1 MB.
 
@@ -459,7 +461,7 @@ You are done with the v0.1.0 release when **all** of the following hold:
       completes end-to-end against a real ChatGPT account.
 - [ ] §2 done: all five slash commands execute their scripts at runtime;
       `/codex:status` and one other return correct output.
-- [ ] §3 done: a `/codex:adversarial-review HEAD~1..HEAD --background` job
+- [ ] §3 done: a `/codex:adversarial-diff-review HEAD~1..HEAD --background` job
       survives the parent session exiting and its result is surfaced by a
       later `/codex:status`.
 - [ ] §4 done: no "TBD" strings in tracked metadata. `grep -r TBD` only

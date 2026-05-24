@@ -1,45 +1,49 @@
 ---
 name: codex:adversarial-review
-description: Hostile code review of the current diff across 7 hard-coded attack surfaces (Authentication, Data loss, Rollbacks, Race conditions, Degraded dependencies, Version skew, Observability gaps). Returns structured JSON consumable by Claude plan mode for closed-loop fix implementation.
-argument_hint: "[--effort low|medium|high] [--focus <surface>] [--background|--wait] [<git-ref>]"
+description: Hostile review of arbitrary files or folders across 7 hard-coded attack surfaces (Authentication, Data loss, Rollbacks, Race conditions, Degraded dependencies, Version skew, Observability gaps). Returns structured JSON. For adversarial review of a git diff instead, use /codex:adversarial-diff-review.
+argument_hint: "[--effort low|medium|high] [--focus <surface>] [--question <text>] [--background|--wait] <path...>"
 allowed_tools: ["Bash", "Read"]
-script: ${CLAUDE_PLUGIN_ROOT}/dist/codex/cli-adversarial.js
+script: ${CLAUDE_PLUGIN_ROOT}/dist/codex/cli-adversarial-review.js
 ---
 
 # /codex:adversarial-review
 
-You are running the flagship command of `codex-claude-bridge`. This command runs Codex against the current diff with a *hostile* mindset, forcing it to reason through each of seven hard-coded attack surfaces in order, and emits structured JSON validated against `${CLAUDE_PLUGIN_ROOT}/schemas/adversarial-output.json`.
+You are running the general-purpose adversarial review command of `codex-claude-bridge`. Same 7-attack-surface taxonomy as `/codex:adversarial-diff-review`, same locked system prompt, same structured JSON output schema — but the input is one or more filesystem paths instead of a git diff.
+
+For an adversarial review of the working diff or a specific git refspec, use `/codex:adversarial-diff-review` instead.
 
 ## Arguments
 
-- `--effort low|medium|high` — reasoning effort. Default: `high` (this is the high-stakes review).
+- `--effort low|medium|high` — reasoning effort. Default: `high`.
 - `--focus <surface>` — narrow to a single surface. Must match one of: `Authentication`, `Data loss`, `Rollbacks`, `Race conditions`, `Degraded dependencies`, `Version skew`, `Observability gaps`. By default, all 7 surfaces run.
+- `--question <text>` — optional steering directive.
 - `--background` / `--wait` — concurrency override.
-- `<git-ref>` — optional ref or refspec. Default: uncommitted working-tree changes.
+- `<path...>` — one or more files or folders to review. Required. Paths must resolve inside the current working directory.
 
-## The 6 phases
+## Steps
 
-This command delegates to `${CLAUDE_PLUGIN_ROOT}/scripts/codex/adversarialEngine.ts.runAdversarialReview()`, which orchestrates:
+This command delegates to `${CLAUDE_PLUGIN_ROOT}/scripts/codex/adversarialEngine.ts.runGeneralAdversarialReview()`. The shape mirrors the 6-phase diff version, with steps 2–3 replaced by filesystem walk:
 
-1. **Argument parsing.** Validate flags. Reject unknown surfaces in `--focus` with a list of valid values.
-2. **Size estimation.** Call `sizeClassifier.classifyDiff()`. Honor explicit `--background` / `--wait`.
-3. **Target resolution.** Resolve to a concrete (base, head) ref pair. Delegate to `git/greenfield.ts.prepareReviewBase()` when no commits exist. Refuse if there is no git repo.
-4. **Context collection.** Gather the diff body, file-level metadata, and (selectively) full file content for files referenced by the diff. Cap total context at the configured token budget.
-5. **Prompt construction.** Load `${CLAUDE_PLUGIN_ROOT}/prompts/adversarial-system.md` as the system prompt — DO NOT modify it. Inject the user-provided steering directive (if any) and the collected context as the user prompt. The 7 attack surface names live verbatim in the system prompt; do not generate them dynamically.
-6. **Dispatch and validate.** Call `transport.sendCompletion()`. Parse the response as JSON. Validate against `${CLAUDE_PLUGIN_ROOT}/schemas/adversarial-output.json`. On validation failure, surface the parsed-best-effort findings with a clear "schema violation" warning.
+1. **Argument parsing.** Validate flags. Reject unknown surfaces in `--focus` with a list of valid values. If no paths are supplied, exit with code 5 and a message that points the user at `/codex:adversarial-diff-review` if they meant the diff.
+2. **Filesystem context collection.** Call `${CLAUDE_PLUGIN_ROOT}/scripts/codex/fsContext.ts.collectFilesystemContext()` against the supplied paths. Apply git ignore rules (or the fallback deny-list outside a git repo), skip binaries, cap at the configured token budget. Any skipped paths are surfaced to the model so it knows what it did NOT see.
+3. **Prompt construction.** Load `${CLAUDE_PLUGIN_ROOT}/prompts/adversarial-system.md` as the system prompt — DO NOT modify it. Prepend a one-paragraph framing ("you are reviewing arbitrary filesystem content, not a diff"). Inject the user-provided steering directive (if any) and the collected file contents as the user prompt. The 7 attack surface names live verbatim in the system prompt; do not generate them dynamically.
+4. **Dispatch and validate.** Call `transport.sendCompletion()`. Parse the response as JSON. Validate against `${CLAUDE_PLUGIN_ROOT}/schemas/adversarial-output.json`. On validation failure, surface the parsed-best-effort findings with a clear "schema violation" warning.
 
 ## Output
 
-Render the JSON to the terminal AND emit it as a Claude tool-result. The tool-result is what enables closed-loop integration: a subsequent Claude plan-mode turn re-reads the JSON and proposes fixes (patterns P2, P3, P7).
+Same shape as `/codex:adversarial-diff-review`:
 
-The schema includes:
 - `verdict`: one of `pass | needs-changes | blocker`
 - `severity_buckets`: `{critical: [], high: [], medium: [], low: []}` — each issue has `{file, line, surface, description, fix_hint}`
 - `next_steps`: short ordered list of actions
 - `safe_to_ship`: array of file paths the reviewer is comfortable shipping
 
+Render the JSON to the terminal AND emit it as a Claude tool-result so plan mode can consume it.
+
 ## Constraints
 
 - The 7 attack surfaces are HARD-CODED in `prompts/adversarial-system.md`. This is enforced by `tests/anti-drift.test.ts`. Never generate them dynamically.
+- Paths must resolve inside the current working directory. Reject attempts to read elsewhere on the filesystem.
 - Output MUST be valid JSON conforming to the schema. Free-form prose responses are a regression.
 - Always emit the result as a tool-result so plan mode can consume it. Do not summarize or paraphrase the JSON in chat — render it raw.
+- If the user's question is really about a diff, prefer `/codex:adversarial-diff-review`.

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/goosefly99/codex-claude-bridge-claude-plugin/schemas/adversarial-output.json",
   "title": "AdversarialOutput",
-  "description": "Structured output of /codex:adversarial-review. Validated by adversarialEngine.dispatchAndValidate before being surfaced to the user or emitted as a tool-result.",
+  "description": "Structured output of /codex:adversarial-diff-review and /codex:adversarial-review. Validated by adversarialEngine.dispatchAndValidate (diff) and runGeneralAdversarialReview (arbitrary paths) before being surfaced to the user or emitted as a tool-result.",
   "type": "object",
   "additionalProperties": false,
   "required": ["verdict", "severity_buckets", "next_steps", "safe_to_ship"],
